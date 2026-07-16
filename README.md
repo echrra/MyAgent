@@ -116,43 +116,8 @@ tests/                  # 单测
 ## 关于数据与命名
 
 - **检索底座**为公开数据集，**评测数据为 LLM 合成**，故障形态提炼自真实生产经验。
+- 服务命名：`edgectl-*`（合成假名） 
 
-### 两套服务命名：`edgectl-*`（合成假名） 与 `linkcraft-*`（真实服务名）
-
-项目里存在两套服务名，务必分清：
-
-| 命名 | 是什么 | 出现在哪 |
-|---|---|---|
-| `edgectl-*` | **合成命名空间（虚构假名）**。项目主体全部用它 | 合成日志、评测集、SOP、mock 工具、服务文档 |
-| `linkcraft-*` | **真实生产系统的服务名** | 仅出现在真实日志接入的映射层 `opsagent/core/tools/tls_client.py` |
-
-日常运行时 Agent 只认 `edgectl-*`（评测集就是这么写的）。只有当它要去查**真实**日志（火山引擎 TLS）时，才需要把假名翻译回真名——这就是映射层 `_SERVICE_ALIAS_TO_REAL` 的作用：
-
-```python
-# opsagent/core/tools/tls_client.py
-_SERVICE_ALIAS_TO_REAL = {
-    "edgectl-backend-http":      ["linkcraft-backend-http", "linkcraft-ugc"],  # 注意：一对二
-    "edgectl-backend-watcher":   ["linkcraft-backend-watcher"],
-    "edgectl-backend-scheduler": ["linkcraft-backend-scheduler"],
-    "edgectl-admin":             ["linkcraft-admin"],
-}
-```
-
-```
-Agent："查 edgectl-backend-http 的日志"
-        │  映射层翻译
-        ▼
-真实查询："查 linkcraft-backend-http + linkcraft-ugc 的日志"
-```
-
-### ⚠️ 不要全局替换 `edgectl` → `linkcraft`
-
-**因为两者不是一一对应**：一个 `edgectl-backend-http` 同时对应 `linkcraft-backend-http` 和 `linkcraft-ugc` 两个真实服务。全局查找替换会把映射表改成键值自我指向（`"linkcraft-backend-http": ["linkcraft-backend-http", ...]`），翻译逻辑直接失效。
-
-**如果确实想还原真名**，正确做法是：
-
-- 只改**映射表这一处**（`_SERVICE_ALIAS_TO_REAL`）即可对照查看谁是谁，其余 600+ 处 `edgectl-*` 保持不动；
-- 若要在某篇文档里点名真实服务，就在那一处**手动标注**（如 `edgectl-backend-http（对应 linkcraft-backend-http + ugc）`），而不是全局替换。
 
 ## License
 
