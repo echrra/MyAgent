@@ -1,0 +1,88 @@
+# 环境变量与密钥（绝对不能提交）
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+.Python
+build/
+dist/
+.venv/
+venv/
+env/
+.uv/
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+htmlcov/
+.coverage
+.coverage.*
+
+# 数据产物（合成后的大体量文件不入库；脚本与拓扑要入库）
+# 注意：.gitignore 不支持行尾注释，#-comment 必须独占一行
+# 层 1 LogHub 公开数据集（~100MB，按需下载）
+# 注：用 /* + /*/ 而非目录级 ignore，便于用 ! 救回 README
+data/logs/real/*
+data/logs/real/*/
+# 层 3 LLM 合成结果
+data/logs/synth/*.jsonl
+# 层 2 业务脱敏样本（含敏感来源信息，不入仓库）
+data/logs/seeds/*.jsonl
+data/traces/normal/
+data/traces/fault/
+data/metrics/*.parquet
+!data/logs/.gitkeep
+!data/logs/real/README.md
+!data/logs/seeds/.gitkeep
+!data/logs/synth/.gitkeep
+!data/traces/.gitkeep
+!data/metrics/.gitkeep
+
+# 评测产物
+eval/reports/*.md
+!eval/reports/.gitkeep
+
+# 模型 / 索引缓存
+models/
+.cache/
+*.bin
+*.pt
+*.gguf
+bm25_index/
+vector_index/
+
+# IDE / 系统
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Claude Code 本地配置（个人权限白名单 / 本地覆盖，不入仓库）
+.claude/
+
+# Chainlit 运行时产物（首次启动自动生成的默认配置 + 欢迎页 + 语言包，非项目资产）
+# 若后续定制欢迎页 / config.toml，再单独用 ! 救回对应文件
+.chainlit/
+chainlit.md
+
+# 日志（运行时日志目录；data/logs/ 是数据资产，由上方专门规则管理）
+*.log
+/logs/
+
+# Langfuse / Postgres 卷
+volumes/
+postgres_data/
+langfuse/.env
+
+# Jupyter
+.ipynb_checkpoints/
+
+# 真实案例（含生产环境信息，仅本地使用，绝不入库）
+real_cases/
