@@ -1,0 +1,24 @@
+id: E008
+fault_pattern: F2_downstream_http_error
+difficulty: medium
+query: 接口返回 200 但业务逻辑实际上失败了，这种情况怎么排查？
+user_profile:
+  role: SRE
+expected_tool_sequence:
+- tools:
+  - search_logs
+  - trace_query
+  - get_service_metrics
+  args_match: {}
+expected_citations:
+- sop-f2-downstream-http-error
+expected_keywords_min: 2
+expected_keywords:
+- errCode
+- '200'
+- 下游
+- 业务
+forbidden_keywords:
+- panic
+- DNS
+- kafka

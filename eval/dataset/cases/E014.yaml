@@ -1,0 +1,24 @@
+id: E014
+fault_pattern: F3_kafka_error
+difficulty: medium
+query: 凌晨 3 点收到 kafka lag 告警，看看是什么原因导致的
+user_profile:
+  role: SRE
+expected_tool_sequence:
+- tools:
+  - search_logs
+  - trace_query
+  - get_service_metrics
+  args_match: {}
+expected_citations:
+- pm-003-kafka-broker-disk-full
+expected_keywords_min: 2
+expected_keywords:
+- kafka
+- broker
+- 磁盘
+- 批量导入
+forbidden_keywords:
+- DNS
+- panic
+- SQL

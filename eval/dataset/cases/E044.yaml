@@ -1,0 +1,24 @@
+id: E044
+fault_pattern: F9_panic_nil_pointer
+difficulty: medium
+query: '日志里出现 runtime error: invalid memory address，是什么意思？'
+user_profile:
+  role: newbie
+expected_tool_sequence:
+- tools:
+  - search_logs
+  - trace_query
+  - get_service_metrics
+  args_match: {}
+expected_citations:
+- sop-f9-panic-nil-pointer
+expected_keywords_min: 2
+expected_keywords:
+- panic
+- nil pointer
+- 空指针
+- recover
+forbidden_keywords:
+- DNS
+- kafka
+- SQL

@@ -1,0 +1,27 @@
+id: E059
+fault_pattern: F12_stuck_task
+difficulty: hard
+query: stuck_task_reconciler 报告最近一批 MotionTrainingProPlus 任务都卡在 PreviewReady 没往下推进，怎么定位卡在哪一步
+user_profile:
+  role: SRE
+expected_tool_sequence:
+- tools:
+  - search_logs
+  - trace_query
+  - get_service_metrics
+  - search_sop
+  args_match: {}
+expected_citations:
+- sop-f12-stuck-task
+- pm-012-stuck-task-preview-ready
+expected_keywords_min: 3
+expected_keywords:
+- STUCK_TASK
+- PreviewReady
+- 状态机
+- 消费者
+- 生命周期
+forbidden_keywords:
+- DNS
+- SQL syntax
+- Kafka producer

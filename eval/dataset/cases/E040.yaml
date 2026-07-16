@@ -1,0 +1,26 @@
+id: E040
+fault_pattern: F8_configsdk_disconnect
+difficulty: hard
+query: 功能上线后配置改不动了，但服务自身完全正常，什么都没报错
+user_profile:
+  role: manager
+expected_tool_sequence:
+- tools:
+  - search_logs
+  - trace_query
+  - get_service_metrics
+  args_match: {}
+expected_citations:
+- sop-f8-configsdk-disconnect
+expected_keywords_min: 3
+expected_keywords:
+- configsdk
+- 断连
+- 热更新失效
+- gRPC
+- 滚动升级
+forbidden_keywords:
+- DNS
+- panic
+- kafka
+- SQL

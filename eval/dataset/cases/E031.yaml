@@ -1,0 +1,25 @@
+id: E031
+fault_pattern: F7_mysql_business_error
+difficulty: easy
+query: admin 最近有没有 MySQL 报错？看看 1062 或者 duplicate key 之类的
+user_profile:
+  role: SRE
+expected_tool_sequence:
+- tool: search_logs
+  args_match:
+    service: edgectl-admin
+expected_citations:
+- sop-f7-mysql-business-error
+- pm-007-duplicate-key-import
+expected_keywords_min: 2
+expected_keywords:
+- '1062'
+- duplicate
+- 唯一键
+- 重复
+forbidden_keywords:
+- DNS
+- kafka
+- panic
+tags:
+- quick

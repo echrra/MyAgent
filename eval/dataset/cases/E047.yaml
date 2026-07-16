@@ -1,0 +1,27 @@
+id: E047
+fault_pattern: F10_token_decode_error
+difficulty: medium
+query: 用户反馈登录后操作一直提示未授权，重新登录也没用
+user_profile:
+  role: SRE
+expected_tool_sequence:
+- tools:
+  - search_logs
+  - trace_query
+  - get_service_metrics
+  args_match: {}
+expected_citations:
+- sop-f10-token-decode-error
+- pm-010-token-key-rotation-silent-failure
+expected_keywords_min: 3
+expected_keywords:
+- token
+- 密钥
+- 轮换
+- 鉴权失败
+- INFO级
+forbidden_keywords:
+- DNS
+- kafka
+- panic
+- SQL

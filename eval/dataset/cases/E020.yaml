@@ -1,0 +1,26 @@
+id: E020
+fault_pattern: F4_object_storage_canceled
+difficulty: hard
+query: 上传功能坏了但监控一切正常，什么都没报，这种情况怎么定位？
+user_profile:
+  role: manager
+expected_tool_sequence:
+- tools:
+  - search_logs
+  - trace_query
+  - get_service_metrics
+  args_match: {}
+expected_citations:
+- sop-f4-object-storage-canceled
+expected_keywords_min: 3
+expected_keywords:
+- context canceled
+- 告警盲区
+- '499'
+- 网关超时
+- 大文件
+forbidden_keywords:
+- DNS
+- kafka
+- panic
+- SQL

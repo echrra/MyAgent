@@ -1,0 +1,26 @@
+id: E060
+fault_pattern: F13_401_mass_spread
+difficulty: medium
+query: 大量用户反馈突然登不上了，socket.io 一直连不上，backend-http 日志里全是 Response check failed 未授权
+user_profile:
+  role: SRE
+expected_tool_sequence:
+- tools:
+  - search_logs
+  - change_query
+  - search_sop
+  args_match: {}
+expected_citations:
+- sop-f13-401-mass-spread
+- pm-010-token-key-rotation-silent-failure
+expected_keywords_min: 3
+expected_keywords:
+- '401'
+- 未授权
+- 密钥轮换
+- JWT
+- 变更
+forbidden_keywords:
+- DNS
+- panic
+- 磁盘

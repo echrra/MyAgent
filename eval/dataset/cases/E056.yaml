@@ -1,0 +1,25 @@
+id: E056
+fault_pattern: F11_requeue_storm
+difficulty: medium
+query: 有个 motion training 任务提交后一直显示处理中，watcher 日志里全是 REQUEUE_STORM 相关报错，requeueCount 一直在涨
+user_profile:
+  role: SRE
+expected_tool_sequence:
+- tools:
+  - search_logs
+  - trace_query
+  - search_sop
+  args_match: {}
+expected_citations:
+- sop-f11-requeue-storm
+expected_keywords_min: 3
+expected_keywords:
+- REQUEUE_STORM
+- requeueCount
+- 死信
+- 业务校验
+- watcher
+forbidden_keywords:
+- DNS
+- panic
+- 磁盘

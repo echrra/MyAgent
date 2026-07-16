@@ -1,0 +1,25 @@
+id: E011
+fault_pattern: F3_kafka_error
+difficulty: easy
+query: backend-http 的 kafka 生产日志看看有没有报错
+user_profile:
+  role: SRE
+expected_tool_sequence:
+- tool: search_logs
+  args_match:
+    service: edgectl-backend-http
+expected_citations:
+- sop-f3-kafka-error
+- pm-003-kafka-broker-disk-full
+expected_keywords_min: 2
+expected_keywords:
+- kafka
+- broker
+- 磁盘
+- 重试
+forbidden_keywords:
+- DNS
+- panic
+- SQL
+tags:
+- quick

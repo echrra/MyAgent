@@ -1,0 +1,25 @@
+id: E006
+fault_pattern: F2_downstream_http_error
+difficulty: easy
+query: backend-http 调外部服务报错了，帮忙看看什么情况
+user_profile:
+  role: SRE
+expected_tool_sequence:
+- tool: search_logs
+  args_match:
+    service: edgectl-backend-http
+expected_citations:
+- sop-f2-downstream-http-error
+- pm-002-downstream-http-404
+expected_keywords_min: 2
+expected_keywords:
+- 下游
+- errCode
+- '503'
+- 不可用
+forbidden_keywords:
+- DNS
+- panic
+- kafka
+tags:
+- quick

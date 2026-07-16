@@ -1,0 +1,25 @@
+id: E058
+fault_pattern: F12_stuck_task
+difficulty: medium
+query: stuck task 巡检器报告最近有一批 MotionTrainingProPlus 任务卡在 PreviewReady 状态没往下推进，用户反馈提交半小时都不出结果
+user_profile:
+  role: newbie
+expected_tool_sequence:
+- tools:
+  - search_logs
+  - trace_query
+  - search_sop
+  args_match: {}
+expected_citations:
+- sop-f12-stuck-task
+expected_keywords_min: 3
+expected_keywords:
+- STUCK_TASK
+- 卡住
+- 状态机
+- 中间态
+- ageSeconds
+forbidden_keywords:
+- DNS
+- kafka
+- panic

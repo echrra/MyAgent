@@ -1,0 +1,24 @@
+id: E018
+fault_pattern: F4_object_storage_canceled
+difficulty: medium
+query: 固件上传传到一半就断了，日志说传输被中途打断
+user_profile:
+  role: newbie
+expected_tool_sequence:
+- tools:
+  - search_logs
+  - trace_query
+  - get_service_metrics
+  args_match: {}
+expected_citations:
+- sop-f4-object-storage-canceled
+expected_keywords_min: 2
+expected_keywords:
+- 上传
+- context canceled
+- 超时
+- 网关
+forbidden_keywords:
+- DNS
+- kafka
+- panic

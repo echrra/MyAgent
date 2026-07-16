@@ -1,0 +1,24 @@
+id: E013
+fault_pattern: F3_kafka_error
+difficulty: medium
+query: 事件处理延迟增大了，消费者 lag 持续在涨，不像是消费慢的问题
+user_profile:
+  role: SRE
+expected_tool_sequence:
+- tools:
+  - search_logs
+  - trace_query
+  - get_service_metrics
+  args_match: {}
+expected_citations:
+- sop-f3-kafka-error
+expected_keywords_min: 2
+expected_keywords:
+- kafka
+- broker
+- 磁盘
+- lag
+forbidden_keywords:
+- DNS
+- panic
+- SQL

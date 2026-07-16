@@ -1,0 +1,31 @@
+id: M003
+fault_pattern: F7_mysql_business_error
+difficulty: hard
+type: multi_turn
+turns:
+- query: edgectl-admin 服务有没有数据库报错？看一下最近的日志
+- query: 上面那个 1062 的错，是哪张表？帮我查一下有没有相关的处理文档
+user_profile:
+  role: SRE
+expected_tool_sequence:
+- tool: search_logs
+  args_match:
+    service: edgectl-admin
+- tool: search_sop
+  args_match: {}
+expected_citations:
+- sop-f7-mysql-business-error
+- pm-007-mysql-duplicate-key
+expected_keywords_min: 2
+expected_keywords:
+- 1062
+- 唯一键
+- duplicate
+- 重复
+- MySQL
+forbidden_keywords:
+- kafka
+- timeout
+- DNS
+tags:
+- multi_turn

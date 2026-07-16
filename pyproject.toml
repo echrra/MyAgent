@@ -1,0 +1,126 @@
+[project]
+name = "opsagent"
+version = "0.0.1"
+description = "智能运维 Agent — 应用层 Agent 深度打磨项目"
+requires-python = ">=3.11,<3.13"
+readme = "README.md"
+
+# ----------------------------------------------------------------
+# 依赖说明（版本范围采用兼容性下限锁定，避免大版本破坏性变更）
+# ----------------------------------------------------------------
+dependencies = [
+  # === Agent 编排（核心）===
+  "langgraph>=0.2.50,<0.4",            # LangGraph：状态图编排
+  "langchain-core>=0.3,<0.4",          # LangGraph 依赖的消息/工具抽象
+
+  # === LLM 网关 ===
+  "openai>=1.50,<2.0",                 # OpenAI SDK（百炼 / DeepSeek 兼容入口都用得到）
+
+  # === Web 框架 + SSE ===
+  "fastapi>=0.115,<0.116",
+  "uvicorn[standard]>=0.32,<0.33",
+  "sse-starlette>=2.1,<3.0",           # SSE 实现
+  "pydantic>=2.9,<3.0",
+  "pydantic-settings>=2.5,<3.0",       # 读取 .env 配置
+
+  # === 数据库 ===
+  "psycopg[binary]>=3.2,<4.0",         # PostgreSQL 驱动（新版 psycopg3）
+  "sqlalchemy>=2.0,<3.0",
+  "pgvector>=0.3,<0.4",                # pgvector 的 Python 适配
+
+  # === RAG ===
+  "bm25s>=0.2,<1.0",                   # 稀疏检索
+  "jieba>=0.42,<1.0",                  # 中文分词（BM25 切词，保留英文/代码 token）
+  "FlagEmbedding>=1.3,<2.0",           # bge-large-zh / bge-reranker-v2-m3
+  "torch>=2.4,<3.0",                   # FlagEmbedding 依赖
+  "numpy>=1.26,<3.0",
+
+  # === 数据合成 ===
+  "faker>=30.0,<40.0",                 # 假数据生成（用户名 / IP 等）
+  "pyyaml>=6.0,<7.0",
+  "pandas>=2.2,<3.0",
+  "pyarrow>=17.0,<22.0",               # parquet 写入
+
+  # === 前端 Demo ===
+  "chainlit>=2.0,<3.0",
+
+  # === 可观测 / 评测（W5 起用，先装上）===
+  "langfuse>=2.50,<4.0",
+  "ragas>=0.2,<0.4",
+
+  # === 工具与日志 ===
+  "loguru>=0.7,<1.0",
+  "python-dotenv>=1.0,<2.0",
+  "httpx>=0.27,<1.0",
+  "tenacity>=9.0,<10.0",               # 工具调用 retry 用
+  "tiktoken>=0.8,<1.0",                # token 计数（记忆压缩阈值判断）
+
+  # === MCP ===
+  "mcp>=1.0,<2.0",                     # Model Context Protocol SDK
+
+  # === 对象存储（仅 scripts/fetch_uat_logs.py 使用，做离线日志拉取） ===
+  "tos>=2.7,<3.0",                     # 火山引擎 TOS 官方 SDK（资源桶；与 TLS 共用 IAM AK/SK）
+  "volcengine>=1.0,<2.0",              # 火山引擎 Python SDK（TLS 日志服务：SearchLogsV2/DescribeProjects）
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3,<9.0",
+  "pytest-asyncio>=0.24,<1.0",
+  "pytest-cov>=5.0,<7.0",
+  "ruff>=0.6,<1.0",
+  "mypy>=1.11,<2.0",
+  "ipython>=8.27,<10.0",
+]
+
+# ----------------------------------------------------------------
+# uv 配置：用 uv 管理虚拟环境与依赖（比 poetry 快一个数量级）
+# 安装：curl -LsSf https://astral.sh/uv/install.sh | sh
+# ----------------------------------------------------------------
+[tool.uv]
+package = false                        # 项目本体不打包，仅作运行环境
+
+# ----------------------------------------------------------------
+# 代码风格：ruff（替代 black + isort + flake8）
+# ----------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = [
+  "data/synthesizer/_generated",
+  ".venv",
+]
+
+[tool.ruff.lint]
+select = [
+  "E", "F", "W", "I",                  # 基础
+  "B",                                  # bugbear（潜在 bug）
+  "UP",                                 # 自动升级到新语法
+  "SIM",                                # 简化建议
+  "RUF",                                # ruff 自带规则
+]
+ignore = [
+  "E501",                               # 行长由 formatter 兜底
+  "RUF001", "RUF002", "RUF003",         # 允许中文注释和字符串中的全角字符
+]
+
+[tool.ruff.format]
+quote-style = "double"
+
+# ----------------------------------------------------------------
+# 类型检查：mypy 严格但允许 third-party 缺类型
+# ----------------------------------------------------------------
+[tool.mypy]
+python_version = "3.11"
+strict = false
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+
+# ----------------------------------------------------------------
+# pytest
+# ----------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-ra --strict-markers"

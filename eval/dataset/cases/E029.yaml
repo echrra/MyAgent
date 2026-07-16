@@ -1,0 +1,24 @@
+id: E029
+fault_pattern: F6_dns_lookup_failed
+difficulty: medium
+query: 日志里全是 lookup timeout 和 i/o timeout 的错误，重试也没用
+user_profile:
+  role: SRE
+expected_tool_sequence:
+- tools:
+  - search_logs
+  - trace_query
+  - get_service_metrics
+  args_match: {}
+expected_citations:
+- pm-006-coredns-overload
+expected_keywords_min: 2
+expected_keywords:
+- DNS
+- CoreDNS
+- 过载
+- 重试
+forbidden_keywords:
+- kafka
+- panic
+- SQL

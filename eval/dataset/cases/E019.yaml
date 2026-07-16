@@ -1,0 +1,24 @@
+id: E019
+fault_pattern: F4_object_storage_canceled
+difficulty: medium
+query: 存储上传失败但没触发告警，用户反馈才发现的，帮查查原因
+user_profile:
+  role: SRE
+expected_tool_sequence:
+- tools:
+  - search_logs
+  - trace_query
+  - get_service_metrics
+  args_match: {}
+expected_citations:
+- pm-004-object-storage-ctx-canceled
+expected_keywords_min: 2
+expected_keywords:
+- context canceled
+- '499'
+- 告警盲区
+- 上传
+forbidden_keywords:
+- DNS
+- kafka
+- panic

@@ -1,0 +1,27 @@
+id: M002
+fault_pattern: F3_kafka_error
+difficulty: medium
+type: multi_turn
+turns:
+- query: edgectl-backend-http 有 Kafka 相关的错误吗？
+- query: 刚才看到的 Kafka 错误，有没有对应的 SOP？我想看看标准处理流程
+user_profile:
+  role: SRE
+expected_tool_sequence:
+- tool: search_sop
+  args_match: {}
+expected_citations:
+- sop-f3-kafka-error
+- pm-003-kafka-lag
+expected_keywords_min: 2
+expected_keywords:
+- Kafka
+- 生产端
+- 退避
+- 重试
+- broker
+forbidden_keywords:
+- DNS
+- panic
+tags:
+- multi_turn

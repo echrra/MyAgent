@@ -1,0 +1,25 @@
+id: E033
+fault_pattern: F7_mysql_business_error
+difficulty: medium
+query: 前端超时了但数据库实际写成功了，运营重试后报唯一键冲突
+user_profile:
+  role: SRE
+expected_tool_sequence:
+- tools:
+  - search_logs
+  - trace_query
+  - get_service_metrics
+  args_match: {}
+expected_citations:
+- pm-007-duplicate-key-import
+expected_keywords_min: 2
+expected_keywords:
+- '1062'
+- 超时
+- 重试
+- 幂等
+- 并发
+forbidden_keywords:
+- DNS
+- kafka
+- panic

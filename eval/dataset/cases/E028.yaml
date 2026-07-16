@@ -1,0 +1,24 @@
+id: E028
+fault_pattern: F6_dns_lookup_failed
+difficulty: medium
+query: 多个服务同时报 502/503，但服务自身指标都正常，不像是服务挂了
+user_profile:
+  role: SRE
+expected_tool_sequence:
+- tools:
+  - search_logs
+  - trace_query
+  - get_service_metrics
+  args_match: {}
+expected_citations:
+- sop-f6-dns-lookup-failed
+expected_keywords_min: 2
+expected_keywords:
+- DNS
+- 解析
+- '502'
+- CoreDNS
+forbidden_keywords:
+- kafka
+- panic
+- SQL

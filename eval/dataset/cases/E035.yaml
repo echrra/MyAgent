@@ -1,0 +1,26 @@
+id: E035
+fault_pattern: F7_mysql_business_error
+difficulty: hard
+query: 导入功能有时成功有时失败，不稳定，感觉跟并发有关但不确定
+user_profile:
+  role: manager
+expected_tool_sequence:
+- tools:
+  - search_logs
+  - trace_query
+  - get_service_metrics
+  args_match: {}
+expected_citations:
+- sop-f7-mysql-business-error
+expected_keywords_min: 3
+expected_keywords:
+- duplicate
+- 并发
+- 幂等
+- 超时
+- 重试
+forbidden_keywords:
+- DNS
+- kafka
+- panic
+- 磁盘

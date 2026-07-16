@@ -1,0 +1,24 @@
+id: E043
+fault_pattern: F9_panic_nil_pointer
+difficulty: medium
+query: 接了批新设备进来后，设备查询功能就开始偶发报错了
+user_profile:
+  role: newbie
+expected_tool_sequence:
+- tools:
+  - search_logs
+  - trace_query
+  - get_service_metrics
+  args_match: {}
+expected_citations:
+- pm-009-nil-pointer-new-device
+expected_keywords_min: 2
+expected_keywords:
+- panic
+- nil
+- 新设备
+- 空值
+forbidden_keywords:
+- DNS
+- kafka
+- SQL

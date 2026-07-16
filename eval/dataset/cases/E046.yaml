@@ -1,0 +1,24 @@
+id: E046
+fault_pattern: F10_token_decode_error
+difficulty: easy
+query: gateway 最近有没有 token 相关的错误日志
+user_profile:
+  role: SRE
+expected_tool_sequence:
+- tool: search_logs
+  args_match: {}
+expected_citations:
+- sop-f10-token-decode-error
+- pm-010-token-key-rotation-silent-failure
+expected_keywords_min: 2
+expected_keywords:
+- token
+- 密钥轮换
+- 鉴权
+- INFO
+forbidden_keywords:
+- DNS
+- kafka
+- panic
+tags:
+- quick

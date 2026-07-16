@@ -1,0 +1,388 @@
+# edgectl 故障短语清单（从真实生产观察抽象，edgectl 为虚构代号）
+#
+# 用途：LLM Generator 在合成"故障注入"日志时，从这里抽样作为故障关键词
+# 设计要点：
+#   1. 每个故障模式包含：
+#      - phrases：故障短语（含占位符 <ULID>/<SN>/<HOST>/<DB>/<TABLE>/<TOKEN>/<N>/<CODE> 等）
+#      - typical_path_pattern：典型 HTTP 路径（如适用）
+#      - cooccur_level / cooccur_status_code / cooccur_prefix：共现关系
+#      - caller_paths：GoFrame glog CallerPath 候选（占位符化）
+#      - stack_templates：Content 多行体的 Stack 帧模板（让 LLM 仿写时有"风格锚"）
+#   2. 所有业务串一律占位符化；占位符示意：
+#      <ULID> 业务对象 ID  / <SN> 设备序列号 / <HOST> 主机/域名 / <DB> 库名 / <TABLE> 表名
+#      <TOKEN> 令牌 / <N> 数字 / <CODE> 错误码 / <FIELD> 字段名 / <KEY> 配置键
+#   3. cooccur_* 是合成时的"硬约束"，Critic 验证日志真实度时也按这套校验
+#
+# 故障矩阵（10 类）：
+#   F1  级联超时（ctx deadline exceeded，主轴）
+#   F2  下游 HTTP 404（远端不存在）
+#   F3  Kafka 生产端失败 / 重试
+#   F4  对象存储上传 ctx 取消
+#   F5  复杂 SQL ctx 取消（慢查询被取消）
+#   F6  DNS 解析失败 + 多次重试
+#   F7  MySQL 业务错误族（1062 / 1364 / 1064）
+#   F8  配置中心 SDK 断连（退避 4s/8s/16s 重连）
+#   F9  Go panic / nil pointer dereference
+#   F10 Token decode 错误（INFO 级别陷阱：告警盲区）
+
+# ==============================================================
+# F1 - 级联超时
+# 上游慢 → 下游 ctx 等待 → context deadline exceeded，错误多层 wrap 后回入口
+# ==============================================================
+F1_cascade_timeout:
+  description: |
+    业务调用链路中某一环长时间不响应，导致上游 ctx 超时，
+    错误经多层 wrap 后返回到入口接口。"context canceled / deadline exceeded"
+    是 ~70% 真实故障的"共同信号"，把它作为主轴。
+  phrases:
+    - "failed to wait release result: ctx done"
+    - "wait release <ULID> timeout"
+    - "context deadline exceeded"
+    - "failed to deploy work <ULID>"
+    - "rpc call to upstream timeout after <N>s"
+    - "upstream service not responding within <N>ms"
+  typical_error_code: DEPLOY_FAILED
+  typical_path_pattern: "/api/v1/<resource>/deploy"
+  cooccur_level: ERRO
+  cooccur_prefix: http
+  cooccur_status_code: [200, 500, 504]    # 注意：部分网关层 200 包裹业务失败（陷阱）
+  cooccur_stack_depth: ">=3"
+  caller_paths:
+    - "/service-x/internal/service/deploy.go:<N>"
+    - "/service-x/internal/controller/work.go:<N>"
+    - "/service-x/internal/middleware/trace.go:<N>"
+    - "/service-x/internal/grpc/dial.go:<N>"
+  stack_templates:
+    - |
+      1. service/deploy.go:<N>
+      2. controller/work.go:<N>
+      3. middleware/trace.go:<N>
+      4. gf/net/ghttp.(*Server).ServeHTTP:<N>
+    - |
+      1. grpc/dial.go:<N>: rpc invoke failed: <err>
+      2. service/release.go:<N>: failed to wait release result
+      3. controller/deploy.go:<N>: deploy work failed
+  related_event_action: [work_deploy_failed, group_control_failed]
+
+# ==============================================================
+# F2 - 下游 HTTP 404
+# 调下游服务时远端返回 404 / 5xx，本服务多层 wrap 后变 5xx 或 200+errCode
+# ==============================================================
+F2_downstream_http_404:
+  description: |
+    本服务调上游 / 下游 HTTP 接口时收到 4xx / 5xx，自身又被网关包成 200+errCode 或直接 5xx。
+    陷阱：内部 errCode 不等于 HTTP status；只看 200 的告警会漏报。
+  phrases:
+    - "downstream <HOST> returned status=<CODE>"
+    - "HTTP <CODE> from <HOST><PATH>"
+    - "remote service not found: <HOST>"
+    - "upstream response errCode=<CODE>, errMsg=<MSG>"
+    - "Trigger interface error errCode=<CODE>"
+    - "operation succeeded but action failed"
+  typical_path_pattern: "/api/v1/<resource>/<action>"
+  cooccur_level: ERRO
+  cooccur_prefix: http
+  cooccur_status_code: [200, 502, 503]     # 200 = 业务包裹陷阱
+  caller_paths:
+    - "/service-x/internal/client/<svc>_client.go:<N>"
+    - "/service-x/internal/httpclient/wrapper.go:<N>"
+    - "/service-x/internal/service/<entity>.go:<N>"
+  stack_templates:
+    - |
+      1. httpclient/wrapper.go:<N>: downstream call failed
+      2. client/<svc>_client.go:<N>: Trigger* error
+      3. service/<entity>.go:<N>: business action failed
+  hint_for_agent: |
+    Agent 不能只看 HTTP status_code = 200 就判定成功，
+    要解析 Response body 的 errorCode / errorMsg 字段。
+
+# ==============================================================
+# F3 - Kafka 生产端失败 / 重试
+# 异步消息发送失败 + 重试，常见于 admin/algo 异步任务
+# ==============================================================
+F3_kafka_producer_failed:
+  description: |
+    Kafka producer 发送消息失败：broker 不可用 / 消息体过大 / 分区 leader 切换。
+    一般伴随 retry attempt=N 的多行同 TraceId 重试日志。
+  phrases:
+    - "kafka produce failed topic=<TOPIC> partition=<N>: <ERR>"
+    - "broker not available: dial tcp <HOST>: connection refused"
+    - "retry sending message attempt=<N> delay=<N>ms"
+    - "producer pool exhausted, dropping message key=<KEY>"
+    - "message too large: <N> bytes > max <N>"
+    - "leader for partition <N> not available"
+  typical_path_pattern: null     # 异步链路一般没有 HTTP path
+  cooccur_level: ERRO
+  cooccur_prefix: default
+  cooccur_status_code: []
+  caller_paths:
+    - "/service-x/internal/kafka/producer.go:<N>"
+    - "/service-x/internal/async/dispatcher.go:<N>"
+    - "/service-x/internal/event/publish.go:<N>"
+  stack_templates:
+    - |
+      1. kafka/producer.go:<N>: produce sync timeout
+      2. async/dispatcher.go:<N>: failed to dispatch event=<EVT>
+      3. event/publish.go:<N>: publish event to topic=<TOPIC> failed
+  hint_for_agent: |
+    Kafka 失败通常会重试，重试链路同 TraceId / 不同 attempt；
+    最终成功也可能成功，最终失败要看最后一条 attempt 的 Level。
+
+# ==============================================================
+# F4 - 对象存储上传 ctx 取消
+# 上传大文件 / 长操作中 ctx 被上游取消（用户断开 / 上层超时传导）
+# ==============================================================
+F4_tos_object_canceled:
+  description: |
+    对象存储 PutObject 进行中被 ctx canceled 打断。
+    根因常是上游 HTTP handler ctx 提前结束（用户关闭 / 网关超时）。
+    与 F1 共享 "context canceled" 主轴。
+  phrases:
+    - "object storage upload canceled: context canceled"
+    - "put object failed bucket=<BUCKET> key=<KEY>: context canceled"
+    - "request canceled while reading body"
+    - "io copy interrupted at offset=<N>"
+    - "presign upload aborted after <N>ms"
+  typical_path_pattern: "/api/v1/<resource>/upload"
+  cooccur_level: ERRO
+  cooccur_prefix: default
+  cooccur_status_code: [499, 500]          # 499 = client closed request
+  caller_paths:
+    - "/service-x/internal/storage/object_store.go:<N>"
+    - "/service-x/internal/storage/client.go:<N>"
+    - "/service-x/internal/controller/upload.go:<N>"
+  stack_templates:
+    - |
+      1. storage/object_store.go:<N>: PutObject failed
+      2. storage/client.go:<N>: io copy: context canceled
+      3. controller/upload.go:<N>: upload handler aborted
+
+# ==============================================================
+# F5 - 复杂 SQL ctx 取消
+# 长事务 / 多表 JOIN / 大表 COUNT 被上游 ctx 取消
+# ==============================================================
+F5_sql_ctx_canceled:
+  description: |
+    数据库长查询（多表 JOIN / 子查询 / 全表 COUNT）超出 ctx 超时被取消。
+    glog 表现为 [<N> ms] [database] [<DB>] [rows:0] ... canceled。
+  phrases:
+    - "query canceled: context canceled"
+    - "[<N> ms] [database] [<DB>] [rows:0] SELECT ... canceled"
+    - "long running query interrupted after <N>ms"
+    - "transaction rollback: context canceled"
+    - "driver: bad connection (ctx canceled)"
+  typical_path_pattern: "/api/v1/<resource>/list"     # 列表 / 统计接口常见
+  cooccur_level: ERRO
+  cooccur_prefix: database
+  cooccur_status_code: [200, 499, 500]
+  caller_paths:
+    - "/service-x/internal/dao/<entity>_dao.go:<N>"
+    - "/service-x/internal/db/wrapper.go:<N>"
+    - "/service-x/internal/service/<entity>.go:<N>"
+  stack_templates:
+    - |
+      1. db/wrapper.go:<N>: exec query canceled
+      2. dao/<entity>_dao.go:<N>: List<Entity> failed
+      3. service/<entity>.go:<N>: page query handler aborted
+
+# ==============================================================
+# F6 - DNS 解析失败 + 多次重试
+# 服务发现 / 外网域名 DNS 抖动，伴随退避重试
+# ==============================================================
+F6_dns_lookup_failed:
+  description: |
+    向某个域名 dial 时 DNS 解析失败（no such host / i/o timeout），
+    伴随指数退避重试 attempt=1/2/3，delay=1s/2s/4s。
+  phrases:
+    - "dial tcp: lookup <HOST>: no such host"
+    - "dial tcp: lookup <HOST>: i/o timeout"
+    - "DNS lookup failed for <HOST>: <ERR>"
+    - "retry DNS resolution host=<HOST> attempt=<N> delay=<N>s"
+    - "service discovery failed: <HOST> unreachable"
+  typical_path_pattern: null
+  cooccur_level: WARN                       # 头几次 attempt 是 WARN，最终失败才 ERRO
+  cooccur_prefix: default
+  cooccur_status_code: [502, 503]
+  caller_paths:
+    - "/service-x/internal/net/dialer.go:<N>"
+    - "/service-x/internal/discovery/dns.go:<N>"
+    - "/service-x/internal/client/wrapper.go:<N>"
+  stack_templates:
+    - |
+      1. net/dialer.go:<N>: lookup <HOST>: no such host
+      2. discovery/dns.go:<N>: resolve service <HOST> failed
+      3. client/wrapper.go:<N>: dial failed after <N> retries
+  hint_for_agent: |
+    DNS 失败常常是抖动，看到 attempt=1/2 可能自愈；
+    attempt 持续上升或最终 ERRO 才是真问题。
+
+# ==============================================================
+# F7 - MySQL 业务错误族（1062 / 1364 / 1064）
+# 唯一键冲突 / 字段无默认值 / SQL 语法错误，混合呈现
+# ==============================================================
+F7_mysql_business_error:
+  description: |
+    MySQL 业务错误三件套：
+      - 1062 Duplicate entry：并发写入 / 重试导致唯一键冲突
+      - 1364 Field doesn't have a default value：迁移后业务 INSERT 没补字段
+      - 1064 You have an error in your SQL syntax：拼 SQL bug（最差，肯定是代码问题）
+    共同模式：[ERRO] {<trace>} <SQL> : Error <CODE> (<SQLSTATE>): <DESC>
+  phrases:
+    - "Error 1062 (23000): Duplicate entry '<KEY>' for key '<TABLE>.<INDEX>'"
+    - "Error 1364 (HY000): Field '<FIELD>' doesn't have a default value"
+    - "Error 1064 (42000): You have an error in your SQL syntax near '<SNIPPET>'"
+    - "INSERT INTO `<TABLE>`(...) VALUES(...) : Error <CODE> (<SQLSTATE>): <DESC>"
+    - "UPDATE `<TABLE>` SET ... WHERE ... : Error <CODE> (<SQLSTATE>): <DESC>"
+  typical_path_pattern: "/api/v1/<resource>/<action>"
+  cooccur_level: ERRO
+  cooccur_prefix: database
+  cooccur_status_code: [200, 500]            # 业务包裹常 200，未捕获时 500
+  caller_paths:
+    - "/service-x/internal/dao/<entity>_dao.go:<N>"
+    - "/service-x/internal/db/exec.go:<N>"
+    - "/service-x/internal/service/<entity>_service.go:<N>"
+  stack_templates:
+    - |
+      1. db/exec.go:<N>: exec failed
+      2. dao/<entity>_dao.go:<N>: insert/update <entity> failed
+      3. service/<entity>_service.go:<N>: business handler error
+  hint_for_agent: |
+    1062 = 业务幂等性缺失 / 重试逻辑撒种；
+    1364 = 代码与表结构脱节，常是迁移后遗症；
+    1064 = SQL 拼接 bug，必属代码问题。
+
+# ==============================================================
+# F8 - 配置中心 SDK 断连
+# configsdk grpc watch 流被服务端 graceful_stop，客户端退避重连 4s/8s/16s
+# ==============================================================
+F8_configsdk_disconnect:
+  description: |
+    配置中心 grpc watch 流被服务端 graceful_stop 主动关闭（多发于配置中心滚动升级），
+    SDK 自动退避重连：delay 序列 4s -> 8s -> 16s。
+    单次 WARN 不算告警；attempt 持续 >=3 才需要关注。
+  phrases:
+    - "configsdk: watch disconnected, reconnecting group=<GROUP> key=<KEY> attempt=<N> delay=<N>s"
+    - 'recv: rpc error: code = Unavailable desc = closing transport due to: connection error'
+    - 'received prior goaway: code: NO_ERROR, debug data: "graceful_stop"'
+    - "EOF reading from server"
+    - "configsdk: reconnect successful group=<GROUP> after <N> attempts"
+  typical_path_pattern: null
+  cooccur_level: WARN
+  cooccur_prefix: default
+  cooccur_status_code: []
+  caller_paths:
+    - "/service-x/internal/configsdk/watcher.go:<N>"
+    - "/service-x/internal/configsdk/client.go:<N>"
+    - "/service-x/internal/bootstrap/config.go:<N>"
+  stack_templates: []                        # WARN 一般不带多行 Stack
+  hint_for_agent: |
+    单条 attempt=1 WARN 不告警；连续 attempt>=3 或迟迟没有 reconnect successful 才是问题。
+    退避序列固定 4s/8s/16s，是 SDK 内置指数退避。
+
+# ==============================================================
+# F9 - Go panic / nil pointer dereference
+# panic 被 recover 中间件接住，伴随 runtime stack
+# ==============================================================
+F9_panic_nil_pointer:
+  description: |
+    业务代码触发 panic（最常见：nil pointer dereference / index out of range），
+    被 recover 中间件捕获后写 ERRO 日志，含 goroutine stack。
+  phrases:
+    - "runtime error: invalid memory address or nil pointer dereference"
+    - "panic: <REASON>"
+    - "goroutine <N> [running]:"
+    - "index out of range [<N>] with length <N>"
+    - "recovered from panic in <HANDLER>: <REASON>"
+    - "send on closed channel"
+  typical_path_pattern: "/api/v1/<resource>/<action>"
+  cooccur_level: ERRO
+  cooccur_prefix: default
+  cooccur_status_code: [500]
+  caller_paths:
+    - "/service-x/internal/handler/<route>.go:<N>"
+    - "/service-x/internal/middleware/recover.go:<N>"
+    - "/service-x/internal/service/<entity>.go:<N>"
+  stack_templates:
+    - |
+      goroutine <N> [running]:
+        runtime/panic.go:<N> +0x<HEX>
+        handler/<route>.go:<N>
+        middleware/recover.go:<N>
+        gf/net/ghttp.(*Server).ServeHTTP:<N>
+    - |
+      1. service/<entity>.go:<N>: nil pointer in <FN>
+      2. handler/<route>.go:<N>: handler aborted by panic
+      3. middleware/recover.go:<N>: recovered
+  hint_for_agent: |
+    panic 和普通 ERRO 不一样：必须看到 "runtime error" / "panic:" 关键词；
+    出现就要告警，且常伴 status_code=500。
+
+# ==============================================================
+# F10 - Token decode 错误（INFO 级别陷阱）
+# 业务把"令牌解析失败"写成 INFO，告警按 ERRO 过滤会完全漏报
+# ==============================================================
+F10_token_decode_error:
+  description: |
+    令牌 / 鉴权解析失败但日志级别被错误地写成 INFO（"是常规请求体异常"思路）。
+    陷阱：监控只看 ERRO 的话完全看不到鉴权失败激增，是经典告警盲区。
+  phrases:
+    - "decode error"
+    - "[LcToken] decode error Token: <TOKEN> base64.StdEncoding.Decode failed: illegal base64 data at input byte <N>"
+    - "[<TOKEN_TYPE>] verification failed: <REASON>"
+    - "invalid token format, expected base64"
+    - "token signature mismatch"
+  typical_path_pattern: "/api/v1/<resource>/<action>"
+  cooccur_level: INFO                        # ← 这就是陷阱
+  cooccur_prefix: default
+  cooccur_status_code: [200, 401]            # 业务包裹常 200
+  caller_paths:
+    - "/service-x/internal/middleware/auth.go:<N>"
+    - "/service-x/internal/token/decode.go:<N>"
+    - "/service-x/internal/middleware/lctoken.go:<N>"
+  stack_templates: []                        # INFO 一般不写 Stack
+  hint_for_agent: |
+    重点：日志级别 = INFO，告警如果只看 ERRO 就完全漏。
+    应该按 "msg 包含 decode error / verification failed" 这种关键词维度告警，
+    而不是只按级别过滤。
+
+# ==============================================================
+# 正常基线
+# 每条故障必须穿插一定比例的正常日志，否则太假
+# ==============================================================
+normal_baseline:
+  description: 健康检查 / 调度任务 / SQL 跟踪 / 正常请求完成 / 正常事件埋点
+  phrases:
+    - "request completed"
+    - "request started"
+    - "task completed"
+    - "audit status sync completed"
+    - "health check ok"
+    - "[<N> ms] [database] [<DB>] [rows:<N>] COMMIT"
+    - "[<N> ms] [database] [<DB>] [rows:<N>] INSERT INTO `<TABLE>`(...) VALUES(...)"
+    - "[<N> ms] [database] [<DB>] [rows:<N>] SELECT ... FROM `<TABLE>` WHERE ..."
+    - "scheduled task=<TASK> ran successfully duration=<N>ms"
+    - "cleanup job completed batch_size=<N>"
+    - "token refresh successful userId=<UID>"
+    - "kafka message consumed topic=<TOPIC> offset=<N>"
+    - "configsdk: reconnect successful group=<GROUP>"
+    - "HTTP <STATUS> path=<PATH> latency=<N>ms"
+  cooccur_level: [DEBU, INFO]
+  cooccur_status_code: [200]
+  caller_paths:
+    - "/service-x/internal/handler/<route>.go:<N>"
+    - "/service-x/internal/service/<entity>.go:<N>"
+    - "/service-x/internal/scheduler/job.go:<N>"
+  user_agent_hint: "kube-probe/* 是健康检查（无业务价值，但量大）"
+
+# ==============================================================
+# 合成约束（给 LLM Generator 的 system 提示用）
+# ==============================================================
+synthesis_constraints:
+  fault_window_density: 0.3       # 故障窗口内承载故障短语的行占比
+  fault_window_duration_sec: 60   # 默认每个故障注入持续 60 秒
+  baseline_density: 0.95          # 非故障时段几乎全是 baseline
+  trace_id_continuity: true       # 同一请求链路 TraceId 必须一致
+  level_consistency: true         # phrases 命中时 Level 必须符合 cooccur_level
+  caller_path_consistency: true   # CallerPath 必须从 caller_paths 候选抽
+  stack_style_consistency: true   # Content 多行体的 Stack 风格须贴合 stack_templates
+  no_real_data: true              # 严禁出现真实邮箱 / IP / 手机号 / JWT，全部占位符化

@@ -1,0 +1,30 @@
+id: M005
+fault_pattern: F6_dns_lookup_failed
+difficulty: hard
+type: multi_turn
+turns:
+- query: edgectl-backend-watcher 有 DNS 解析失败的报错，能看下吗
+- query: 刚才那个 DNS 问题影响范围大吗？有没有其他服务也受影响？查一下相关的运维手册
+user_profile:
+  role: SRE
+expected_tool_sequence:
+- tool: search_logs
+  args_match: {}
+- tool: search_sop
+  args_match: {}
+expected_citations:
+- sop-f6-dns-lookup-failed
+- pm-006-dns-resolution
+expected_keywords_min: 2
+expected_keywords:
+- DNS
+- 解析
+- 退避
+- 重试
+- lookup
+forbidden_keywords:
+- kafka
+- MySQL
+- panic
+tags:
+- multi_turn

@@ -1,0 +1,27 @@
+id: E061
+fault_pattern: F13_401_mass_spread
+difficulty: hard
+query: 短时间内 401 错误从每分钟几条涨到每分钟几千条，跨多个部门用户，最近有过一次 backend 发布，怀疑是发布带来的回归
+user_profile:
+  role: SRE
+expected_tool_sequence:
+- tools:
+  - search_logs
+  - change_query
+  - search_sop
+  args_match: {}
+expected_citations:
+- sop-f13-401-mass-spread
+- pm-010-token-key-rotation-silent-failure
+expected_keywords_min: 3
+expected_keywords:
+- '401'
+- 未授权
+- 发布
+- 认证 middleware
+- 回归
+- 密钥
+forbidden_keywords:
+- DNS
+- SQL
+- kafka

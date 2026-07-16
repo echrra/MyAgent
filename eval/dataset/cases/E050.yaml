@@ -1,0 +1,27 @@
+id: E050
+fault_pattern: F10_token_decode_error
+difficulty: hard
+query: 有个问题持续了 45 分钟才被用户反馈发现，监控完全没响，怎么排查这类静默故障？
+user_profile:
+  role: manager
+expected_tool_sequence:
+- tools:
+  - search_logs
+  - trace_query
+  - get_service_metrics
+  args_match: {}
+expected_citations:
+- sop-f10-token-decode-error
+expected_keywords_min: 3
+expected_keywords:
+- 静默故障
+- 告警盲区
+- INFO
+- token
+- 日志级别
+- 密钥
+forbidden_keywords:
+- DNS
+- kafka
+- panic
+- SQL

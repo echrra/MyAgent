@@ -1,0 +1,25 @@
+id: E034
+fault_pattern: F7_mysql_business_error
+difficulty: medium
+query: admin 日志出现 Error 1364 和 1064 错误，不确定是什么问题
+user_profile:
+  role: SRE
+expected_tool_sequence:
+- tools:
+  - search_logs
+  - trace_query
+  - get_service_metrics
+  args_match: {}
+expected_citations:
+- sop-f7-mysql-business-error
+expected_keywords_min: 2
+expected_keywords:
+- '1364'
+- '1064'
+- MySQL
+- 字段
+- 语法
+forbidden_keywords:
+- DNS
+- kafka
+- panic

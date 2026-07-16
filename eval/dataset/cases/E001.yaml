@@ -1,0 +1,25 @@
+id: E001
+fault_pattern: F1_cascade_timeout
+difficulty: easy
+query: edgectl-backend-http 最近有超时报错吗？帮我看看日志
+user_profile:
+  role: SRE
+expected_tool_sequence:
+- tool: search_logs
+  args_match:
+    service: edgectl-backend-http
+expected_citations:
+- sop-f1-cascade-timeout
+- pm-001-cascade-timeout
+expected_keywords_min: 2
+expected_keywords:
+- 超时
+- timeout
+- 下游
+- 级联
+forbidden_keywords:
+- kafka
+- DNS
+- panic
+tags:
+- quick

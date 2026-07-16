@@ -1,0 +1,24 @@
+id: E004
+fault_pattern: F1_cascade_timeout
+difficulty: medium
+query: 好几个服务同时变慢了，不是单个服务的问题，像是某个下游拖慢了整条链路
+user_profile:
+  role: newbie
+expected_tool_sequence:
+- tools:
+  - search_logs
+  - trace_query
+  - get_service_metrics
+  args_match: {}
+expected_citations:
+- sop-f1-cascade-timeout
+expected_keywords_min: 2
+expected_keywords:
+- 级联
+- 超时
+- 下游
+- 雪崩
+forbidden_keywords:
+- DNS
+- kafka
+- 磁盘

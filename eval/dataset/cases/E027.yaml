@@ -1,0 +1,27 @@
+id: E027
+fault_pattern: F6_dns_lookup_failed
+difficulty: medium
+query: 服务之间突然连不上了，所有服务 CPU 内存都正常但互相调不通
+user_profile:
+  role: SRE
+expected_tool_sequence:
+- tools:
+  - search_logs
+  - trace_query
+  - get_service_metrics
+  args_match: {}
+expected_citations:
+- sop-f6-dns-lookup-failed
+- pm-006-coredns-overload
+expected_keywords_min: 3
+expected_keywords:
+- DNS
+- CoreDNS
+- no such host
+- 过载
+- 解析
+forbidden_keywords:
+- kafka
+- panic
+- SQL
+- 磁盘

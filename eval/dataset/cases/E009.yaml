@@ -1,0 +1,24 @@
+id: E009
+fault_pattern: F2_downstream_http_error
+difficulty: medium
+query: 审核队列一堆待处理的一直不动，但审核服务本身看起来没挂
+user_profile:
+  role: SRE
+expected_tool_sequence:
+- tools:
+  - search_logs
+  - trace_query
+  - get_service_metrics
+  args_match: {}
+expected_citations:
+- pm-002-downstream-http-404
+expected_keywords_min: 2
+expected_keywords:
+- 下游
+- errCode
+- 不可用
+- '503'
+forbidden_keywords:
+- DNS
+- panic
+- kafka

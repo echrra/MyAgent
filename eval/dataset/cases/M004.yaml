@@ -1,0 +1,31 @@
+id: M004
+fault_pattern: F9_panic_nil_pointer
+difficulty: medium
+type: multi_turn
+turns:
+- query: 线上有服务 panic 了，帮我查一下 edgectl-backend-http 的日志
+- query: 这个 nil pointer 是在哪个函数触发的？有没有以前类似的故障复盘可以参考
+user_profile:
+  role: SRE
+expected_tool_sequence:
+- tool: search_logs
+  args_match:
+    service: edgectl-backend-http
+- tool: search_sop
+  args_match: {}
+expected_citations:
+- sop-f9-panic-nil-pointer
+- pm-009-panic-nil-deref
+expected_keywords_min: 2
+expected_keywords:
+- panic
+- nil pointer
+- recover
+- goroutine
+- 空指针
+forbidden_keywords:
+- kafka
+- DNS
+- 超时
+tags:
+- multi_turn

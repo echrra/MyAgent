@@ -1,0 +1,26 @@
+id: E032
+fault_pattern: F7_mysql_business_error
+difficulty: medium
+query: 批量导入设备时很多条导入失败了，运营说报错了
+user_profile:
+  role: newbie
+expected_tool_sequence:
+- tools:
+  - search_logs
+  - trace_query
+  - get_service_metrics
+  args_match: {}
+expected_citations:
+- sop-f7-mysql-business-error
+- pm-007-duplicate-key-import
+expected_keywords_min: 3
+expected_keywords:
+- '1062'
+- duplicate
+- 并发
+- 超时
+- 幂等
+forbidden_keywords:
+- DNS
+- kafka
+- panic

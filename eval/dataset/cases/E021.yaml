@@ -1,0 +1,25 @@
+id: E021
+fault_pattern: F5_sql_ctx_canceled
+difficulty: easy
+query: 设备列表页特别慢，查查 backend-http 有没有慢查询
+user_profile:
+  role: SRE
+expected_tool_sequence:
+- tool: search_logs
+  args_match:
+    service: edgectl-backend-http
+expected_citations:
+- sop-f5-sql-ctx-canceled
+- pm-005-slow-sql-join-explosion
+expected_keywords_min: 2
+expected_keywords:
+- 慢查询
+- SQL
+- 连接池
+- context canceled
+forbidden_keywords:
+- DNS
+- kafka
+- panic
+tags:
+- quick

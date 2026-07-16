@@ -1,0 +1,25 @@
+id: E041
+fault_pattern: F9_panic_nil_pointer
+difficulty: easy
+query: backend-http 最近有 panic 吗？看看日志
+user_profile:
+  role: SRE
+expected_tool_sequence:
+- tool: search_logs
+  args_match:
+    service: edgectl-backend-http
+expected_citations:
+- sop-f9-panic-nil-pointer
+- pm-009-nil-pointer-new-device
+expected_keywords_min: 2
+expected_keywords:
+- panic
+- nil pointer
+- recover
+- 空指针
+forbidden_keywords:
+- DNS
+- kafka
+- SQL
+tags:
+- quick

@@ -1,0 +1,24 @@
+id: E038
+fault_pattern: F8_configsdk_disconnect
+difficulty: medium
+query: 配置中心昨晚做了滚动升级，今早发现配置推送好像不工作了
+user_profile:
+  role: SRE
+expected_tool_sequence:
+- tools:
+  - search_logs
+  - trace_query
+  - get_service_metrics
+  args_match: {}
+expected_citations:
+- pm-008-configsdk-reconnect-bug
+expected_keywords_min: 2
+expected_keywords:
+- configsdk
+- 滚动升级
+- 断连
+- graceful_stop
+forbidden_keywords:
+- DNS
+- panic
+- kafka

@@ -1,0 +1,26 @@
+id: E002
+fault_pattern: F1_cascade_timeout
+difficulty: medium
+query: 部署接口突然慢了很多，上游 gateway 也开始报 504，感觉像是连锁反应
+user_profile:
+  role: SRE
+expected_tool_sequence:
+- tools:
+  - search_logs
+  - trace_query
+  - get_service_metrics
+  args_match: {}
+expected_citations:
+- sop-f1-cascade-timeout
+- pm-001-cascade-timeout
+expected_keywords_min: 3
+expected_keywords:
+- 雪崩
+- 超时
+- 熔断
+- 下游
+- scheduler
+forbidden_keywords:
+- mysql
+- kafka
+- 已自动重启

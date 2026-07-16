@@ -1,0 +1,25 @@
+id: E016
+fault_pattern: F4_object_storage_canceled
+difficulty: easy
+query: 对象存储上传有报错吗？看看 backend-http 日志
+user_profile:
+  role: SRE
+expected_tool_sequence:
+- tool: search_logs
+  args_match:
+    service: edgectl-backend-http
+expected_citations:
+- sop-f4-object-storage-canceled
+- pm-004-object-storage-ctx-canceled
+expected_keywords_min: 2
+expected_keywords:
+- 上传
+- context canceled
+- 超时
+- 网关
+forbidden_keywords:
+- DNS
+- panic
+- kafka
+tags:
+- quick

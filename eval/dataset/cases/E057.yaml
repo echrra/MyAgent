@@ -1,0 +1,26 @@
+id: E057
+fault_pattern: F11_requeue_storm
+difficulty: hard
+query: motion-training-task-status topic 的消费能力最近变差，好几个 task 一直被反复处理但从来 fail 不了，怀疑是消息处理逻辑有问题
+user_profile:
+  role: 后端开发
+expected_tool_sequence:
+- tools:
+  - search_logs
+  - trace_query
+  - search_sop
+  args_match: {}
+expected_citations:
+- sop-f11-requeue-storm
+- pm-011-requeue-storm
+expected_keywords_min: 3
+expected_keywords:
+- REQUEUE_STORM
+- retry
+- 死信
+- 业务校验失败
+- errCode
+forbidden_keywords:
+- DNS
+- SQL
+- kafka producer

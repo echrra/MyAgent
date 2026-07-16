@@ -1,0 +1,26 @@
+id: E007
+fault_pattern: F2_downstream_http_error
+difficulty: medium
+query: 设备注册功能好像坏了，用户说注册成功了但实际没通过审核
+user_profile:
+  role: newbie
+expected_tool_sequence:
+- tools:
+  - search_logs
+  - trace_query
+  - get_service_metrics
+  args_match: {}
+expected_citations:
+- sop-f2-downstream-http-error
+- pm-002-downstream-http-404
+expected_keywords_min: 3
+expected_keywords:
+- 下游
+- errCode
+- '200'
+- 业务
+- 不可用
+forbidden_keywords:
+- kafka
+- DNS
+- panic

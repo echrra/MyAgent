@@ -1,0 +1,26 @@
+id: E042
+fault_pattern: F9_panic_nil_pointer
+difficulty: medium
+query: 设备详情接口间歇性 500，只有部分设备查询会报错
+user_profile:
+  role: SRE
+expected_tool_sequence:
+- tools:
+  - search_logs
+  - trace_query
+  - get_service_metrics
+  args_match: {}
+expected_citations:
+- sop-f9-panic-nil-pointer
+- pm-009-nil-pointer-new-device
+expected_keywords_min: 3
+expected_keywords:
+- panic
+- nil pointer
+- 空指针
+- 新设备
+- recover
+forbidden_keywords:
+- DNS
+- kafka
+- SQL

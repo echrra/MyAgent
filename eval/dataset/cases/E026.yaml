@@ -1,0 +1,25 @@
+id: E026
+fault_pattern: F6_dns_lookup_failed
+difficulty: easy
+query: edgectl-backend-watcher 最近有 DNS 解析失败吗？
+user_profile:
+  role: SRE
+expected_tool_sequence:
+- tool: search_logs
+  args_match:
+    service: edgectl-backend-watcher
+expected_citations:
+- sop-f6-dns-lookup-failed
+- pm-006-coredns-overload
+expected_keywords_min: 2
+expected_keywords:
+- DNS
+- no such host
+- CoreDNS
+- 解析
+forbidden_keywords:
+- kafka
+- panic
+- SQL
+tags:
+- quick

@@ -1,0 +1,28 @@
+id: M001
+fault_pattern: F1_cascade_timeout
+difficulty: medium
+type: multi_turn
+turns:
+- query: edgectl-backend-http 最近有超时报错吗？帮我看看日志
+- query: 那个服务的下游是哪个？也帮我查一下下游的日志，看看是不是级联超时
+user_profile:
+  role: SRE
+expected_tool_sequence:
+- tool: search_logs
+  args_match: {}
+- tool: search_sop
+  args_match: {}
+expected_citations:
+- sop-f1-cascade-timeout
+- pm-001-cascade-timeout
+expected_keywords_min: 2
+expected_keywords:
+- 超时
+- 下游
+- 级联
+- timeout
+forbidden_keywords:
+- kafka
+- DNS
+tags:
+- multi_turn

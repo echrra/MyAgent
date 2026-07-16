@@ -1,0 +1,24 @@
+id: E048
+fault_pattern: F10_token_decode_error
+difficulty: medium
+query: 做完密钥轮换后部分用户鉴权不过了，但完全没有告警
+user_profile:
+  role: SRE
+expected_tool_sequence:
+- tools:
+  - search_logs
+  - trace_query
+  - get_service_metrics
+  args_match: {}
+expected_citations:
+- pm-010-token-key-rotation-silent-failure
+expected_keywords_min: 2
+expected_keywords:
+- 密钥轮换
+- 告警盲区
+- INFO
+- token
+forbidden_keywords:
+- DNS
+- kafka
+- panic

@@ -1,0 +1,26 @@
+id: E025
+fault_pattern: F5_sql_ctx_canceled
+difficulty: hard
+query: 早高峰上班后系统就卡了，但凌晨跑批没这个问题
+user_profile:
+  role: manager
+expected_tool_sequence:
+- tools:
+  - search_logs
+  - trace_query
+  - get_service_metrics
+  args_match: {}
+expected_citations:
+- sop-f5-sql-ctx-canceled
+expected_keywords_min: 3
+expected_keywords:
+- 慢查询
+- SQL
+- 连接池
+- 并发
+- context canceled
+forbidden_keywords:
+- DNS
+- kafka
+- panic
+- 磁盘

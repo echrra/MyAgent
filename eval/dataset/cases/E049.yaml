@@ -1,0 +1,24 @@
+id: E049
+fault_pattern: F10_token_decode_error
+difficulty: medium
+query: 鉴权失败的错误被记成了 INFO 级别，所以没触发告警对吗？
+user_profile:
+  role: SRE
+expected_tool_sequence:
+- tools:
+  - search_logs
+  - trace_query
+  - get_service_metrics
+  args_match: {}
+expected_citations:
+- sop-f10-token-decode-error
+expected_keywords_min: 2
+expected_keywords:
+- INFO
+- 告警盲区
+- token
+- 日志级别
+forbidden_keywords:
+- DNS
+- kafka
+- panic

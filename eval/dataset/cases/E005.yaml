@@ -1,0 +1,26 @@
+id: E005
+fault_pattern: F1_cascade_timeout
+difficulty: hard
+query: 线上突然出了一个性能问题，好几个接口 P99 飙升，但每个服务 CPU 和内存都正常
+user_profile:
+  role: manager
+expected_tool_sequence:
+- tools:
+  - search_logs
+  - trace_query
+  - get_service_metrics
+  args_match: {}
+expected_citations:
+- sop-f1-cascade-timeout
+expected_keywords_min: 3
+expected_keywords:
+- 级联
+- 超时
+- 下游
+- 熔断
+- 线程池
+forbidden_keywords:
+- DNS
+- kafka
+- panic
+- 磁盘满

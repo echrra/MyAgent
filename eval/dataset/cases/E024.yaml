@@ -1,0 +1,24 @@
+id: E024
+fault_pattern: F5_sql_ctx_canceled
+difficulty: medium
+query: 设备数据量增长后列表查询变得极慢，之前都正常的
+user_profile:
+  role: newbie
+expected_tool_sequence:
+- tools:
+  - search_logs
+  - trace_query
+  - get_service_metrics
+  args_match: {}
+expected_citations:
+- pm-005-slow-sql-join-explosion
+expected_keywords_min: 2
+expected_keywords:
+- 慢查询
+- JOIN
+- 数据量
+- 索引
+forbidden_keywords:
+- DNS
+- kafka
+- panic

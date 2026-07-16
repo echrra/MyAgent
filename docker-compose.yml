@@ -1,0 +1,36 @@
+# =============================================================
+# OpsAgent 本地开发依赖：Postgres + pgvector
+# 启动：make db-up
+# 关闭：make db-down
+# 数据持久化在 ./volumes/pg_data，已加入 .gitignore
+# =============================================================
+
+services:
+  postgres:
+    # 官方维护的 pgvector 镜像（基础镜像 = postgres 16）
+    image: pgvector/pgvector:pg16
+    container_name: opsagent-pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-opsagent}
+      POSTGRES_USER: ${POSTGRES_USER:-opsagent}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-in-real-env}
+      # 时区与 locale，避免 timestamp 排序歧义
+      TZ: Asia/Shanghai
+      PGTZ: Asia/Shanghai
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      # 数据卷
+      - ./volumes/pg_data:/var/lib/postgresql/data
+      # 启动时自动执行初始化 SQL（建 vector 扩展 + 基础表）
+      - ./scripts/db_init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-opsagent} -d ${POSTGRES_DB:-opsagent}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+# 备注：
+# - Langfuse 自托管在 W5 才启用，单独写 docker-compose.langfuse.yml
+# - 此文件保持精简，只跑必需的 PG，避免 W0 调试期资源压力

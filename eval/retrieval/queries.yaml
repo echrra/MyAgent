@@ -1,0 +1,73 @@
+# W2 检索评测集（对抗版）—— 语义化 query + 分级相关度
+#
+# 设计意图（面试锚点）：
+#   初版 query 带精确术语（错误码 1062、no such host、服务名），BM25 召回阶段就满分，
+#   rerank 开/关零差异，证明不了精排的价值。本版刻意「抹掉精确词、只留口语症状」，
+#   并混入语义相邻但根因不同的干扰族（context canceled 家族 F4/F5/pm-012、
+#   对账重复 pm-011 vs 任务假成功 pm-012），逼召回阶段产生噪声，
+#   把 rerank 的增量逼出来（体现在 MRR / NDCG@5 的 delta）。
+#
+# 分级相关度（graded relevance，供 NDCG）：
+#   2 = 核心命中（最对口的 SOP / 对应 PM）
+#   1 = 相关（同主题但非最佳，命中也算 Recall，但 NDCG 增益减半）
+# 命中判定：top-5 内出现任一 rel>0 文档即算召回；MRR 取首个 rel>0 的名次。
+
+queries:
+  - query: "一个接口变慢以后，上游全被拖住，最后整片服务都不响应了"
+    note: "级联超时；不提『超时/雪崩』，干扰族=ctx canceled 链路类 pm-012"
+    gold:
+      sop-f1-cascade-timeout: 2
+      pm-001-cascade-timeout: 2
+
+  - query: "文件传到一半就断了，后台说传输被中途打断"
+    note: "对象存储 ctx canceled；强干扰=F5/pm-012 同为 context canceled"
+    gold:
+      sop-f4-object-storage-canceled: 2
+      pm-004-object-storage-ctx-canceled: 2
+
+  - query: "报表页面一直转圈，等很久最后也没打开"
+    note: "SQL 慢查询被取消；不提 SQL/慢查询/canceled，强干扰=F4/pm-012"
+    gold:
+      sop-f5-sql-ctx-canceled: 2
+      pm-005-slow-sql-join-explosion: 2
+
+  - query: "批量任务显示都成功了，可实际上根本没生效，对账时才发现对不上"
+    note: "ctx 被吞没致假成功；干扰=pm-011 同为对账/批量场景"
+    gold:
+      pm-012-ctx-cancel-defer-bug: 2
+
+  - query: "服务之间突然连不上了，像是找不到对方的地址"
+    note: "DNS 解析失败；不提 no such host/DNS/CoreDNS"
+    gold:
+      sop-f6-dns-lookup-failed: 2
+      pm-006-coredns-overload: 2
+
+  - query: "改了配置半天不生效，可服务又没报任何错"
+    note: "配置中心 SDK 断连；不提 gRPC/SDK/重连"
+    gold:
+      sop-f8-configsdk-disconnect: 2
+      pm-008-configsdk-reconnect-bug: 2
+
+  - query: "定时任务好像被跑了两遍，同一批数据被重复处理了"
+    note: "分布式锁提前过期致双跑；不提锁，干扰=pm-012 同为 watcher/对账"
+    gold:
+      pm-011-distributed-lock-early-expire: 2
+
+  - query: "消息一直发不出去不停重试，怀疑是存东西的地方满了"
+    note: "Kafka broker 磁盘满；不提 Kafka/broker/disk"
+    gold:
+      sop-f3-kafka-error: 2
+      pm-003-kafka-broker-disk-full: 2
+      kafka: 1
+
+  - query: "接进来一个新设备，程序当场就崩了"
+    note: "新设备触发空指针 panic；不提 nil/panic"
+    gold:
+      sop-f9-panic-nil-pointer: 2
+      pm-009-nil-pointer-new-device: 2
+
+  - query: "认证悄悄失败了，但完全没有任何告警冒出来"
+    note: "token 解析失败只打 INFO 不告警；不提 token/decode/INFO"
+    gold:
+      sop-f10-token-decode-error: 2
+      pm-010-token-key-rotation-silent-failure: 2

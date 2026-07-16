@@ -1,0 +1,24 @@
+id: E003
+fault_pattern: F1_cascade_timeout
+difficulty: medium
+query: scheduler 看起来处理很慢，调它的服务全部等到超时了，是什么情况？
+user_profile:
+  role: SRE
+expected_tool_sequence:
+- tools:
+  - search_logs
+  - trace_query
+  - get_service_metrics
+  args_match: {}
+expected_citations:
+- sop-f1-cascade-timeout
+expected_keywords_min: 2
+expected_keywords:
+- 级联
+- timeout
+- 线程池
+- 熔断
+forbidden_keywords:
+- DNS
+- panic
+- kafka

@@ -1,0 +1,26 @@
+id: E022
+fault_pattern: F5_sql_ctx_canceled
+difficulty: medium
+query: 后台设备管理页面一直加载不出来，接口 P99 飙到 30 秒了
+user_profile:
+  role: SRE
+expected_tool_sequence:
+- tools:
+  - search_logs
+  - trace_query
+  - get_service_metrics
+  args_match: {}
+expected_citations:
+- sop-f5-sql-ctx-canceled
+- pm-005-slow-sql-join-explosion
+expected_keywords_min: 3
+expected_keywords:
+- 慢查询
+- JOIN
+- 连接池
+- SQL
+- context canceled
+forbidden_keywords:
+- DNS
+- kafka
+- panic

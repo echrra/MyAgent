@@ -1,0 +1,24 @@
+id: E036
+fault_pattern: F8_configsdk_disconnect
+difficulty: easy
+query: 看看各服务有没有 configsdk 断连或重连的日志
+user_profile:
+  role: SRE
+expected_tool_sequence:
+- tool: search_logs
+  args_match: {}
+expected_citations:
+- sop-f8-configsdk-disconnect
+- pm-008-configsdk-reconnect-bug
+expected_keywords_min: 2
+expected_keywords:
+- configsdk
+- 断连
+- 重连
+- graceful_stop
+forbidden_keywords:
+- DNS
+- panic
+- kafka
+tags:
+- quick

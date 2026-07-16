@@ -1,0 +1,25 @@
+id: E010
+fault_pattern: F2_downstream_http_error
+difficulty: hard
+query: 有个功能好像偷偷坏了一段时间了，没有告警也没有5xx，但用户投诉功能不正常
+user_profile:
+  role: manager
+expected_tool_sequence:
+- tools:
+  - search_logs
+  - trace_query
+  - get_service_metrics
+  args_match: {}
+expected_citations:
+- sop-f2-downstream-http-error
+expected_keywords_min: 3
+expected_keywords:
+- 下游
+- errCode
+- '200'
+- 业务
+- 不可用
+forbidden_keywords:
+- DNS
+- panic
+- 磁盘

@@ -1,0 +1,112 @@
+# edgectl 业务日志 schema（抽象，虚构代号 edgectl 代指一个边缘设备管控示例服务）
+#
+# 用途：给 LLM Generator 做 few-shot 时的字段约束 + 等级/分布提示
+# 来源：从真实生产日志样本抽象，已脱敏，不含任何具体值
+# 适用：GoFrame 微服务（glog 默认格式 + 火山引擎 LogHub 注入元数据）
+#
+# 字段类型用 OpenAPI 简化语法表示：
+#   string / integer / float / boolean / datetime / enum [a, b, c]
+#   ulid: 01 开头 26 字符（Crockford base32）
+#   hex32: 32 位十六进制（链路追踪 ID 标准）
+
+# --------------------------------------------------------------
+# 1. 火山引擎 LogHub 注入的容器/集群元数据（每行日志都有）
+# --------------------------------------------------------------
+container_meta:
+  cluster_id:            { type: string,   note: LogHub 集群短 ID }
+  host_ip:               { type: string,   note: 宿主机 IP（一般是私有段） }
+  __container_ip__:      { type: string }
+  __container_name__:    { type: string,   note: 一般等于服务名，如 <SERVICE>-http / <SERVICE>-watcher }
+  __container_source__:  { type: "enum [stdout, stderr]" }
+  __image_name__:        { type: string,   note: 镜像全名，含 registry + 提交 SHA tag }
+  __namespace__:         { type: string,   note: k8s namespace，命名通常含环境后缀 dev/uat/prod }
+  __pod_name__:          { type: string,   note: <service>-<replicaset>-<hash> }
+  __pod_uid__:           { type: string,   note: UUID v4 }
+  __source__:            { type: string,   note: 采集源 IP，一般等于 host_ip }
+  __tag____client_ip__:  { type: string,   note: LogHub 客户端 IP }
+  __tag____receive_time__: { type: integer, note: 13 位 unix-ms，LogHub 接收时间 }
+
+# --------------------------------------------------------------
+# 2. 应用层日志体（GoFrame glog 默认格式）
+# --------------------------------------------------------------
+app_log:
+  time:        { type: datetime, format: "ISO8601 + 时区（如 2026-06-08T19:08:34.329+08:00）" }
+  Level:       { type: "enum [DEBU, INFO, WARN, ERRO, FATA]", note: "4 字母缩写，注意是 DEBU 不是 DEBUG" }
+  TraceId:     { type: hex32,    note: 链路追踪 ID，跨服务透传 }
+  Prefix:      { type: "enum [default, database, http, algo, scheduler, watcher]", note: glog 子记录器名 }
+  CallerPath:  { type: string,   note: "源码路径:行号，如 /builds/.../foo.go:115（占位符化为 /service-x/internal/<mod>.go:<line>）" }
+  # 消息字段：INFO/DEBU 用 msg（简短动词短语），ERRO 用 Content（多段，含 Stack）
+  msg:         { type: string,   note: 一句话动词短语，如 request completed / task completed }
+  Content:     { type: string,   note: ERROR 日志的多行体，含 Error 字段、Stack 栈帧、userId/method/path 上下文 }
+  Stack:       { type: string,   note: 仅 ERRO 级出现，多帧调用栈 }
+
+# --------------------------------------------------------------
+# 3. 业务扩展字段（按消息类型分桶；同一日志条只属于一类）
+# --------------------------------------------------------------
+business_fields:
+
+  # 3.1 HTTP 请求生命周期（msg = request started / request completed）
+  http_request:
+    method:          { type: "enum [GET, POST, PUT, DELETE, PATCH]" }
+    path:            { type: string,   note: "REST 路径，如 /api/v1/<resource>/<action>" }
+    status_code:     { type: integer,  note: "200/4xx/5xx；注意业务可能 HTTP 200 + 内部 code 非 0" }
+    latency_ms:      { type: integer,  note: 单请求耗时 }
+    bytes_out:       { type: integer }
+    client_ip:       { type: string }
+    user_agent:      { type: string,   note: "kube-probe/* 是健康检查，量大；浏览器 UA 是用户请求" }
+    content_length:  { type: integer }
+    trace_id:        { type: hex32 }
+
+  # 3.2 数据库 SQL 跟踪（Prefix = database，量最大）
+  db_sql:
+    sql_ms:          { type: integer,  note: "[xx ms] 前缀" }
+    rows:            { type: integer }
+    txid:            { type: integer,  note: "[txid:NNNN] 仅在事务内出现" }
+    sql_template:    { type: string,   note: "如 INSERT INTO `t`(`c1`,`c2`) VALUES(...), COMMIT, BEGIN" }
+    Error:           { type: string,   note: 仅失败时存在，含 MySQL 错误码（如 1062/1213/2003） }
+
+  # 3.3 定时任务（msg 含 task / sync 字样）
+  scheduled_task:
+    task_name:       { type: string,   note: "如 audit_status_sync / clean_expired_token" }
+    duration_ms:     { type: integer }
+    status:          { type: "enum [running, completed, failed]" }
+    end_time:        { type: datetime }
+
+  # 3.4 业务事件埋点（写到 <svc>_event_log 表，event_action 分类）
+  business_event:
+    event_page:      { type: string,   note: "如 devices / works / users" }
+    event_action:    { type: string,   note: "动名词，如 work_deploy_failed / group_control_deploy" }
+    work_id:         { type: ulid }
+    control_task_id: { type: ulid }
+    device_count:    { type: integer }
+    error_code:      { type: "enum [DEPLOY_FAILED, TIMEOUT, AUTH_FAILED, ...]" }
+    reason:          { type: string,   note: 自由文本错误原因，常含上游短语 }
+
+  # 3.5 用户认证上下文（伴随 4xx/5xx 错误日志一起出现）
+  auth_context:
+    userId:          { type: integer }
+    username:        { type: string,   note: "脱敏后是 <PHONE>/<EMAIL>" }
+    deptId:          { type: integer }
+    roleKey:         { type: string,   note: "如 DeptManager / DeptCommonMember" }
+    token:           { type: string,   note: "脱敏后是 <JWT>" }
+
+# --------------------------------------------------------------
+# 4. 各等级分布（基于真实生产观察，用于合成时控制比例）
+# --------------------------------------------------------------
+level_distribution:
+  DEBU: 0.70   # 数据库 SQL 跟踪 + 外部 API raw 请求/响应 dump，量最大
+  INFO: 0.22   # request completed / task completed / audit sync 等正常事件
+  WARN: 0.03   # 慢 SQL 告警 / 重试警告
+  ERRO: 0.05   # SQL 失败 / 上游错误 / 业务异常
+
+# --------------------------------------------------------------
+# 5. 服务清单（命名约定：edgectl-<role>-<subrole>；edgectl 为虚构代号）
+# --------------------------------------------------------------
+known_services:
+  - { name: "edgectl-backend-http",      role: "对外 HTTP API 入口（业务侧主流量）" }
+  - { name: "edgectl-backend-watcher",   role: "K8s 事件 watcher / 定时任务" }
+  - { name: "edgectl-backend-scheduler", role: "调度器（控制任务下发 / 状态对账）" }
+  - { name: "edgectl-admin",             role: "后台管控（运营 + 内部操作 + 短信通知）" }
+  - { name: "edgectl-algo",              role: "算法/审核 / 异步任务消费端" }
+  # 实际命名遵循同一前缀 + 角色后缀的模式
+  # 提示：跨服务 TraceId 必须一致，由 http 入口下发后透传到 watcher/scheduler/algo

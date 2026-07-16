@@ -1,0 +1,26 @@
+id: E030
+fault_pattern: F6_dns_lookup_failed
+difficulty: hard
+query: 全集群大面积间歇性报错，持续 20 多分钟，但重启任何单个服务都没用
+user_profile:
+  role: manager
+expected_tool_sequence:
+- tools:
+  - search_logs
+  - trace_query
+  - get_service_metrics
+  args_match: {}
+expected_citations:
+- sop-f6-dns-lookup-failed
+expected_keywords_min: 3
+expected_keywords:
+- DNS
+- CoreDNS
+- 过载
+- 集群
+- 基础设施
+forbidden_keywords:
+- kafka
+- panic
+- SQL
+- 磁盘

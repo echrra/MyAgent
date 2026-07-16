@@ -1,0 +1,27 @@
+id: E017
+fault_pattern: F4_object_storage_canceled
+difficulty: medium
+query: 大文件上传一直失败，小文件没问题，报了个 context canceled
+user_profile:
+  role: SRE
+expected_tool_sequence:
+- tools:
+  - search_logs
+  - trace_query
+  - get_service_metrics
+  args_match: {}
+expected_citations:
+- sop-f4-object-storage-canceled
+- pm-004-object-storage-ctx-canceled
+expected_keywords_min: 3
+expected_keywords:
+- 上传
+- 大文件
+- context canceled
+- 网关超时
+- gateway
+forbidden_keywords:
+- DNS
+- panic
+- kafka
+- SQL

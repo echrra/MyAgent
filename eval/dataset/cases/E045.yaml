@@ -1,0 +1,26 @@
+id: E045
+fault_pattern: F9_panic_nil_pointer
+difficulty: hard
+query: 接口偶发 500 但只影响 8% 的请求，其余完全正常，什么模式会导致这种现象？
+user_profile:
+  role: manager
+expected_tool_sequence:
+- tools:
+  - search_logs
+  - trace_query
+  - get_service_metrics
+  args_match: {}
+expected_citations:
+- sop-f9-panic-nil-pointer
+expected_keywords_min: 3
+expected_keywords:
+- panic
+- nil pointer
+- 部分数据
+- 空值
+- recover
+forbidden_keywords:
+- DNS
+- kafka
+- SQL
+- 全量

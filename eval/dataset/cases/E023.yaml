@@ -1,0 +1,24 @@
+id: E023
+fault_pattern: F5_sql_ctx_canceled
+difficulty: medium
+query: 数据库连接池快满了，Threads_connected 一直在涨
+user_profile:
+  role: SRE
+expected_tool_sequence:
+- tools:
+  - search_logs
+  - trace_query
+  - get_service_metrics
+  args_match: {}
+expected_citations:
+- sop-f5-sql-ctx-canceled
+expected_keywords_min: 2
+expected_keywords:
+- 连接池
+- 慢查询
+- SQL
+- JOIN
+forbidden_keywords:
+- DNS
+- kafka
+- panic

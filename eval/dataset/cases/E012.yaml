@@ -1,0 +1,27 @@
+id: E012
+fault_pattern: F3_kafka_error
+difficulty: medium
+query: 消息好像发不出去了，下游消费者那边堆积越来越多
+user_profile:
+  role: SRE
+expected_tool_sequence:
+- tools:
+  - search_logs
+  - trace_query
+  - get_service_metrics
+  args_match: {}
+expected_citations:
+- sop-f3-kafka-error
+- pm-003-kafka-broker-disk-full
+expected_keywords_min: 3
+expected_keywords:
+- kafka
+- broker
+- 磁盘满
+- 堆积
+- 重试
+forbidden_keywords:
+- DNS
+- panic
+- SQL
+- 超时

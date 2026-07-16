@@ -1,0 +1,80 @@
+# =============================================================
+# LiteLLM 路由配置（SDK 模式，由 opsagent/core/llm/client.py 加载）
+# - 用别名 (alias) 把"业务节点"和"具体模型"解耦
+# - 业务代码只引用 plan / reflect / answer / updater 等别名
+# - 切换模型只改本文件，不改任何业务代码
+# =============================================================
+
+# ---------- 模型清单 ----------
+model_list:
+  # ----- 主力（决策类节点）：gpt-5.5 via 中转站 -----
+  - model_name: plan
+    litellm_params:
+      model: openai/gpt-5.5
+      api_key: os.environ/PROXY_AUTH_TOKEN
+      api_base: os.environ/PROXY_BASE_URL
+      temperature: 0.0
+
+  - model_name: reflect
+    litellm_params:
+      model: openai/gpt-5.5
+      api_key: os.environ/PROXY_AUTH_TOKEN
+      api_base: os.environ/PROXY_BASE_URL
+      temperature: 0.0
+
+  - model_name: answer
+    litellm_params:
+      model: openai/gpt-5.5
+      api_key: os.environ/PROXY_AUTH_TOKEN
+      api_base: os.environ/PROXY_BASE_URL
+      temperature: 0.3
+
+  # ----- 辅助（Query Rewriter / Profile Updater）：DeepSeek 官方 deepseek-chat -----
+  # 改用 DeepSeek 官方直连（非中转站），降低 query 改写延迟，缩短 search_sop 整体耗时
+  - model_name: updater
+    litellm_params:
+      model: openai/deepseek-chat
+      api_key: os.environ/DEEPSEEK_API_KEY
+      api_base: os.environ/DEEPSEEK_BASE_URL
+      temperature: 0.0
+
+  # ----- 备份模型（主链路失败时降级）-----
+  - model_name: fallback
+    litellm_params:
+      model: openai/deepseek-v4-pro
+      api_key: os.environ/PROXY_AUTH_TOKEN
+      api_base: os.environ/PROXY_BASE_URL
+      temperature: 0.0
+
+  # ----- 数据合成 Generator（仅 W0 数据合成用，业务链路不引）-----
+  - model_name: generator
+    litellm_params:
+      model: openai/deepseek-v4-pro
+      api_key: os.environ/PROXY_AUTH_TOKEN
+      api_base: os.environ/PROXY_BASE_URL
+      temperature: 0.7
+
+  # ----- 数据合成 Critic（仅 W0 数据合成用）-----
+  - model_name: critic
+    litellm_params:
+      model: openai/deepseek-v4-pro
+      api_key: os.environ/PROXY_AUTH_TOKEN
+      api_base: os.environ/PROXY_BASE_URL
+      temperature: 0.0
+
+# ---------- 路由 / 降级策略 ----------
+router_settings:
+  fallbacks:
+    - plan: ["fallback"]
+    - reflect: ["fallback"]
+    - answer: ["fallback"]
+    - generator: ["fallback"]
+    - critic: ["fallback"]
+  timeout: 60
+  num_retries: 1
+  retry_after: 1
+
+# ---------- LiteLLM 全局开关 ----------
+litellm_settings:
+  drop_params: true
+  set_verbose: false
