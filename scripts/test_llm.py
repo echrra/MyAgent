@@ -28,10 +28,10 @@ PROBE_QUESTION = "用一句话回答：1+1 等于多少？"
 def _check_keys() -> None:
     """先检查 .env 是否填了 Key，否则提前拒绝运行。"""
     missing = []
+    if not settings.proxy_auth_token or settings.proxy_auth_token.startswith("sk-your"):
+        missing.append("PROXY_AUTH_TOKEN")
     if not settings.deepseek_api_key or settings.deepseek_api_key.startswith("sk-your"):
         missing.append("DEEPSEEK_API_KEY")
-    if not settings.dashscope_api_key or settings.dashscope_api_key.startswith("sk-your"):
-        missing.append("DASHSCOPE_API_KEY")
     if missing:
         print("❌ 缺少 API Key（请编辑 .env）：", ", ".join(missing))
         sys.exit(2)
@@ -64,7 +64,7 @@ async def main() -> int:
     print("OpsAgent — LLM 连通性烟测")
     print("=" * 60)
     print(f"DeepSeek base: {settings.deepseek_base_url}")
-    print(f"Qwen     base: {settings.dashscope_base_url}")
+    print(f"百炼 proxy base: {settings.proxy_base_url}")
     print()
 
     failures = 0

@@ -1,16 +1,23 @@
-"""eval/dataset 加载测试 —— 验证 YAML 可解析、字段完整、分布正确。"""
+"""eval/dataset 加载测试 —— 验证 YAML 可解析、字段完整、分布合理。
+
+断言口径：数量 / 编号 / 分布类断言写成**契约**而非**快照**。原先硬编码「50 条 /
+E001-E050 连续 / 10 类各 5 条 / 10-30-10 难度」，每次扩评测集都会红一次；真正要守的
+性质是「不退化、格式合法、无孤例」——扩集不该改测试，误删才该报警。
+"""
 
 from __future__ import annotations
 
+import re
 from collections import Counter
+from pathlib import Path
 
 from eval.dataset import CASES_DIR, load_cases, load_quick_subset
 
 # 全量加载一次供多个测试共享
 ALL_CASES = load_cases(CASES_DIR)
-# 单轮 case（E001-E050）
+# 单轮 case（E 前缀；编号不连续 —— F11-F13 的 case 从 E056 起编，E051-E055 留空）
 SINGLE_TURN_CASES = [c for c in ALL_CASES if c.get("type") != "multi_turn"]
-# 多轮 case（M001-M005）
+# 多轮 case（M 前缀）
 MULTI_TURN_CASES = [c for c in ALL_CASES if c.get("type") == "multi_turn"]
 
 # 单轮 case 必需字段
@@ -44,22 +51,31 @@ REQUIRED_FIELDS_MULTI = {
 
 
 class TestLoadAll:
-    """单轮 case（E001-E050）全量验证。"""
+    """单轮 case 全量验证。"""
 
-    def test_count(self):
-        """应有 50 条单轮 case。"""
-        assert len(SINGLE_TURN_CASES) == 50
+    def test_count_not_shrinking(self):
+        """数量不退化，且加载结果与 cases 目录里的 E*.yaml 一一对应。
+
+        取代原先的 `== 50`：下限守「误删 / 漏加载」，集合比对守「文件与 id 不一致」，
+        两者都不会因为扩集而失效。
+        """
+        yaml_ids = {p.stem for p in Path(CASES_DIR).glob("E*.yaml")}
+        assert len(SINGLE_TURN_CASES) >= 50, "单轮 case 数量低于历史基线，疑似误删"
+        assert {c["id"] for c in SINGLE_TURN_CASES} == yaml_ids, "case id 与文件名不一致"
 
     def test_ids_unique(self):
         """ID 不重复。"""
         ids = [c["id"] for c in ALL_CASES]
         assert len(ids) == len(set(ids))
 
-    def test_ids_sequential(self):
-        """E001-E050 连续。"""
-        expected_ids = {f"E{i:03d}" for i in range(1, 51)}
-        actual_ids = {c["id"] for c in SINGLE_TURN_CASES}
-        assert actual_ids == expected_ids
+    def test_ids_format(self):
+        """单轮 case ID 形如 E001。
+
+        不断言编号连续 —— E051-E055 是留空的（F11-F13 从 E056 起编），
+        「格式合法 + 唯一 + 与文件名一致」才是契约。
+        """
+        for case in SINGLE_TURN_CASES:
+            assert re.fullmatch(r"E\d{3}", case["id"]), f"非法单轮 ID: {case['id']}"
 
     def test_required_fields(self):
         """每条单轮 case 含必需字段。"""
@@ -75,18 +91,28 @@ class TestLoadAll:
             )
 
     def test_difficulty_distribution(self):
-        """单轮 case 难度分布: 10 easy / 30 medium / 10 hard。"""
+        """三档难度都有足量样本，且没有单档独大。
+
+        取代原先的 `10 / 30 / 10`：精确条数是快照，扩集必失效。要守的是「三档都在、
+        分布不退化成单一难度」——否则评测会失去难度梯度的区分力。
+        """
         cnt = Counter(c["difficulty"] for c in SINGLE_TURN_CASES)
-        assert cnt["easy"] == 10
-        assert cnt["medium"] == 30
-        assert cnt["hard"] == 10
+        total = len(SINGLE_TURN_CASES)
+        for level in ("easy", "medium", "hard"):
+            assert cnt[level] >= 5, f"{level} 仅 {cnt[level]} 条，样本不足"
+        assert max(cnt.values()) <= total * 0.7, f"单一难度占比过高: {dict(cnt)}"
 
     def test_fault_pattern_coverage(self):
-        """单轮 case 10 种故障类型各 5 条。"""
+        """故障类型覆盖不退化，且每类不是孤例。
+
+        取代原先的 `10 类各 5 条`：F11-F13 接入后是 13 类、新类各 2 条。
+        每类 ≥2 是为了让「跨 case 一致低分」能与「单例波动」区分开。
+        """
         cnt = Counter(c["fault_pattern"] for c in SINGLE_TURN_CASES)
-        assert len(cnt) == 10
+        assert len(cnt) >= 10, f"故障类型覆盖退化，仅 {len(cnt)} 类"
         for pattern, count in cnt.items():
-            assert count == 5, f"{pattern} 只有 {count} 条"
+            assert pattern, "存在空 fault_pattern"
+            assert count >= 2, f"{pattern} 只有 {count} 条，孤例无法评估稳定性"
 
     def test_query_not_empty(self):
         """单轮 case query 非空字符串。"""

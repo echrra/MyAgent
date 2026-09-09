@@ -7,27 +7,31 @@
 
 # ---------- 模型清单 ----------
 model_list:
-  # ----- 主力（决策类节点）：gpt-5.5 via 中转站 -----
+  # ----- 主力（决策类节点）：gpt-5.5 via aigw 中转 -----
+  # 注意：gpt-5.5 是 reasoning model，temperature 只能用 1，max_tokens 在新 SDK 里是 max_completion_tokens
   - model_name: plan
     litellm_params:
       model: openai/gpt-5.5
       api_key: os.environ/PROXY_AUTH_TOKEN
       api_base: os.environ/PROXY_BASE_URL
-      temperature: 0.0
+      temperature: 1          # reasoning model 硬约束（唯一允许值）
+      max_completion_tokens: 4096  # 给足空间，含 reasoning tokens
 
   - model_name: reflect
     litellm_params:
       model: openai/gpt-5.5
       api_key: os.environ/PROXY_AUTH_TOKEN
       api_base: os.environ/PROXY_BASE_URL
-      temperature: 0.0
+      temperature: 1
+      max_completion_tokens: 4096
 
   - model_name: answer
     litellm_params:
       model: openai/gpt-5.5
       api_key: os.environ/PROXY_AUTH_TOKEN
       api_base: os.environ/PROXY_BASE_URL
-      temperature: 0.3
+      temperature: 1
+      max_completion_tokens: 4096
 
   # ----- 辅助（Query Rewriter / Profile Updater）：DeepSeek 官方 deepseek-chat -----
   # 改用 DeepSeek 官方直连（非中转站），降低 query 改写延迟，缩短 search_sop 整体耗时
@@ -39,17 +43,19 @@ model_list:
       temperature: 0.0
 
   # ----- 备份模型（主链路失败时降级）-----
+  # 用同中转站的 gpt-5.4-mini，保持同协议同 host
   - model_name: fallback
     litellm_params:
-      model: openai/deepseek-v4-pro
+      model: openai/gpt-5.4-mini
       api_key: os.environ/PROXY_AUTH_TOKEN
       api_base: os.environ/PROXY_BASE_URL
-      temperature: 0.0
+      temperature: 1
+      max_completion_tokens: 4096
 
   # ----- 数据合成 Generator（仅 W0 数据合成用，业务链路不引）-----
   - model_name: generator
     litellm_params:
-      model: openai/deepseek-v4-pro
+      model: openai/qwen3.7-plus
       api_key: os.environ/PROXY_AUTH_TOKEN
       api_base: os.environ/PROXY_BASE_URL
       temperature: 0.7
@@ -57,7 +63,7 @@ model_list:
   # ----- 数据合成 Critic（仅 W0 数据合成用）-----
   - model_name: critic
     litellm_params:
-      model: openai/deepseek-v4-pro
+      model: openai/qwen3.7-plus
       api_key: os.environ/PROXY_AUTH_TOKEN
       api_base: os.environ/PROXY_BASE_URL
       temperature: 0.0

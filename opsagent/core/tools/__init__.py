@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field, model_validator
 from opsagent.core.tools.base import Tool
 from opsagent.core.tools.mcp_servers.client import get_mcp_manager
 from opsagent.core.tools.mock import change_query, create_ticket, get_service_metrics
-from opsagent.core.tools.real import search_logs, search_sop, trace_query
+from opsagent.core.tools.real import search_logs, search_sop, trace_query, wiki_read
 
 
 # ---------- 入参模型（Pydantic 校验 LLM 给的工具参数）----------
@@ -35,6 +35,19 @@ class SearchSopArgs(BaseModel):
 
     query: str = Field(description="检索词")
     top_k: int = Field(default=3, ge=1, le=20, description="返回条数上限")
+
+
+class WikiReadArgs(BaseModel):
+    """wiki_read 入参。"""
+
+    doc_ids: str = Field(
+        description="文档 ID，多个用英文逗号分隔（最多 3 篇）。可直接传检索结果里的 doc_id；"
+                    "带路径或 .md 后缀也能识别；传 README 读全库目录索引"
+    )
+    section: str = Field(
+        default="",
+        description="只读某个二级标题段（子串匹配、大小写不敏感），留空读全文",
+    )
 
 
 class GetServiceMetricsArgs(BaseModel):
@@ -119,7 +132,7 @@ TOOL_REGISTRY: dict[str, Tool] = {
         fn=search_sop,
         args_model=SearchSopArgs,
         description="语义+关键词混合检索知识库",
-        timeout_s=60.0,
+        timeout_s=180.0,  # CPU 上 reranker 推理 50候选 ~80s，留足余量
         max_retries=0,  # 重试只会再占 60s 检索池槽、加剧争抢，CPU 任务不值得重试
         heavy=True,     # 走独立检索池，避免饿死轻量工具
     ),
@@ -140,12 +153,29 @@ TOOL_REGISTRY: dict[str, Tool] = {
         fn=create_ticket,
         args_model=CreateTicketArgs,
         description="创建运维工单，返回工单号",
+        risk="write",
+        side_effect=True,
     ),
     "change_query": Tool(
         name="change_query",
         fn=change_query,
         args_model=ChangeQueryArgs,
         description="查某服务近期变更（发布/配置/扩缩容）",
+    ),
+    # wiki_read 是纯文件读（毫秒级），走轻量池、用默认超时；它的价值不在检索而在
+    # 「按 ID 精读 + 拿出链」，是 search_sop 一次没命中时的恢复路径。
+    # 截断上限单独放宽（全局默认 2000/30 是为 search_logs 这类批量返回定的）：
+    # - max_str_chars=8000：知识库最长文档是目录页 README（约 4.9k 字符），设 8000 留足
+    #   增长余量。若被截，Agent 会拿到残篇当全文用 —— SOP 的排查步骤常在中后段，
+    #   与"精读全文"的语义直接矛盾。实际单篇平均仅 1.9k 字符，上限只是安全阀不是常态。
+    # - max_list_items=50：目录页 README 有 38 条出链，默认 30 会丢掉 8 篇，目录就不全了。
+    "wiki_read": Tool(
+        name="wiki_read",
+        fn=wiki_read,
+        args_model=WikiReadArgs,
+        description="按 ID 精读知识库页面全文并返回出链，供顺交叉引用跳下一跳",
+        max_str_chars=8000,
+        max_list_items=50,
     ),
     # ---- 以下为 MCP 协议工具（与上面 FC 工具同台，演示双轨）----
     "kb_search": Tool(
@@ -173,6 +203,10 @@ TOOL_DESCRIPTIONS = """\
   可用服务名：edgectl-backend-http（核心 HTTP API）/ edgectl-admin（后台管控）/ edgectl-backend-watcher（事件监听+定时任务）/ edgectl-backend-scheduler（调度器）。
   at 参数：ISO8601 时间锚点。如果用户在 query 里给了具体时间（如 "2026-06-17 13:49:53"），必须把它转成 "2026-06-17T13:49:53" 传给 at；未带时区时按北京时间理解。
 - search_sop(query: str, top_k: int = 3): 语义+关键词混合检索知识库（SOP 排查指南 / 故障复盘 / 中间件手册 / 服务说明），向量召回+BM25+RRF+rerank。
+- wiki_read(doc_ids: str, section: str = ""): 按文档 ID 精读知识库页面全文，并返回该页「相关文档」出链（下一跳候选，带目标标题）。多个 ID 用英文逗号分隔，最多 3 篇。
+  **search_sop 返空或分数都偏低时不要放弃**：挑一个语义最近的 doc_id（例如同故障域的复盘 pm-0xx）用 wiki_read 打开，再顺 links 跳到真正要找的 SOP——交叉引用是人工维护的，不受检索措辞波动影响。
+  search_sop 只给了片段、需要完整排查步骤时也用它精读；给 section 可只取某一段（可选段名见返回的 sections），省上下文。
+  传 "README" 可读全库目录索引（故障域 → 文档映射）。
 - get_service_metrics(service: str, minutes: int = 5): 查某服务最近 N 分钟的 QPS/错误率/延迟。
 - trace_query(trace_id: str = "", service: str = "", minutes: int = 30, at: str = ""): 查调用链路（trace_id/service 至少给一个）。给 trace_id 时优先精确查——若本地无命中且开了 TLS fallback，自动查云端。at 参数用法同 search_logs：用户给了绝对时间就传 at。给 service 先列近期可疑链路挑一个 trace_id 再下钻。
 - change_query(service: str = "", minutes: int = 60): 查某服务近期变更（发布/配置/扩缩容）。排障常用——「发版即出事」是高频根因。

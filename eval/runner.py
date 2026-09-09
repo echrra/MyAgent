@@ -16,14 +16,21 @@ import statistics
 import time
 import uuid
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from loguru import logger
 
 from eval.dataset import CASES_DIR, load_cases, load_quick_subset
+from eval.fingerprint import (
+    collect_fingerprint,
+    format_fingerprint_summary,
+    save_fingerprint,
+)
 from eval.metrics.scorer import EvalResult, score_case
+from eval.thresholds import check_thresholds, format_gate_report
+from eval.trace import collect_case_trace, save_trace
 
 # ====================== 数据结构 ======================
 
@@ -68,7 +75,7 @@ class EvalRunner:
         self.cases = cases
         self.concurrency = concurrency
         self.timeout = timeout
-        self.run_id = f"eval_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
+        self.run_id = f"eval_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
 
     async def run(self) -> EvalRunSummary:
         """跑完所有 case，返回汇总。"""
@@ -79,7 +86,7 @@ class EvalRunner:
         success_count = sum(1 for r in results if r.error is None)
         return EvalRunSummary(
             run_id=self.run_id,
-            timestamp=datetime.now(UTC).isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
             total_cases=len(results),
             success_count=success_count,
             error_count=len(results) - success_count,
@@ -207,6 +214,10 @@ class EvalRunner:
         end_trace(trace_id)
         flush()
 
+        # 工具轨迹落盘（query / doc_id / rerank 分数 / 耗时，供 badcase 归因）
+        case_trace = collect_case_trace(case_id, working_memory, elapsed_ms)
+        save_trace(case_trace, Path("eval/traces") / self.run_id)
+
         return CaseRunResult(
             case_id=case_id,
             fault_pattern=case.get("fault_pattern", "?"),
@@ -220,8 +231,12 @@ class EvalRunner:
 # ====================== 报告生成 ======================
 
 
-def generate_report(summary: EvalRunSummary, output_path: Path) -> None:
-    """生成 Markdown 评测报告。"""
+def generate_report(
+    summary: EvalRunSummary,
+    output_path: Path,
+    fingerprint_summary: str = "",
+) -> None:
+    """生成 Markdown 评测报告。fingerprint_summary 非空时写入报告头部。"""
     results = summary.results
     scored = [r for r in results if r.eval_result is not None]
 
@@ -258,6 +273,12 @@ def generate_report(summary: EvalRunSummary, output_path: Path) -> None:
     lines = [
         f"# Eval Report: {summary.run_id}",
         "",
+    ]
+    # 指纹摘要放在报告最前面，一眼看到本轮跑在什么环境上
+    if fingerprint_summary:
+        lines.append(fingerprint_summary)
+        lines.append("")
+    lines += [
         f"**时间**: {summary.timestamp}  ",
         f"**总条数**: {summary.total_cases} | **成功**: {summary.success_count} | **错误**: {summary.error_count}",
         "",
@@ -588,6 +609,17 @@ async def async_main() -> None:
         summary = await runner.run()
         all_summaries.append(summary)
 
+        # 实验指纹：采集并落盘（git SHA / 数据 hash / 模型配置 / 运行参数）
+        case_ids = [c.get("id", "?") for c in cases]
+        fp = collect_fingerprint(
+            concurrency=args.concurrency,
+            timeout_s=args.timeout,
+            case_ids=case_ids,
+        )
+        fp_path = save_fingerprint(fp, Path("eval/reports"), run_id=runner.run_id)
+        fp_summary = format_fingerprint_summary(fp)
+        print(f"🔖 指纹: {fp_path}")
+
         # 逐条打印
         for r in summary.results:
             if r.error:
@@ -596,14 +628,27 @@ async def async_main() -> None:
                 score = r.eval_result.total_score if r.eval_result else 0.0
                 print(f"  {'✓' if score >= 0.7 else '△'} {r.case_id}: {score:.3f} ({r.latency_ms:.0f}ms)")
 
-        # 单轮报告
+        # 单轮报告（头部嵌入指纹摘要）
         report_path = Path(args.output) if args.output else Path("eval/reports") / f"{runner.run_id}.md"
-        generate_report(summary, report_path)
+        generate_report(summary, report_path, fingerprint_summary=fp_summary)
         scored = [r for r in summary.results if r.eval_result]
         if scored:
             avg = statistics.mean([r.eval_result.total_score for r in scored])
             print(f"   {label}总分均值: {avg:.3f} | 成功/错误: {summary.success_count}/{summary.error_count}")
             print(f"   报告: {report_path}")
+
+            # 回归门禁：破线输出警告（不退出，CI 中由调用方决定）
+            gate = check_thresholds(summary)
+            gate_text = format_gate_report(gate, run_id=runner.run_id)
+            # 门禁结果追加到报告尾部
+            with report_path.open("a", encoding="utf-8") as fh:
+                fh.write(gate_text)
+            if not gate.passed:
+                print(f"   🚨 门禁破线: {len(gate.violations)} 项")
+                for v in gate.violations:
+                    print(f"      {v.message}")
+            else:
+                print(f"   ✅ 门禁通过 ({gate.n_checks} 项检查)")
         print()
 
     # 多轮汇总：输出中位数报告

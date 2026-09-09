@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     dashscope_base_url: str = Field(
         default="https://dashscope.aliyuncs.com/compatible-mode/v1"
     )
+    # 中转站凭证（litellm_config.yaml 中 5 个别名走这组，经 os.environ 被 litellm 消费）
+    proxy_base_url: str = Field(default="")
+    proxy_auth_token: str = Field(default="")
 
     # ---------- 模型路由别名（默认值与 litellm_config.yaml 对齐）----------
     model_plan: str = Field(default="plan")

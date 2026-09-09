@@ -169,7 +169,7 @@ class TestWorker:
                 }))
 
         # mock 工具执行
-        async def _fake_exec_tool(tool_call, trace_id=""):
+        async def _fake_exec_tool(tool_call, trace_id="", phase=""):
             return {
                 "tool_name": "search_logs",
                 "args": {"service": "edgectl", "keyword": "DNS"},
@@ -218,7 +218,7 @@ class TestWorker:
                     "conclusion": "有一定证据",
                 }))
 
-        async def _fake_exec(tool_call, trace_id=""):
+        async def _fake_exec(tool_call, trace_id="", phase=""):
             return {
                 "tool_name": "search_logs",
                 "args": {"service": "svc"},
@@ -259,7 +259,7 @@ class TestWorker:
                     "conclusion": "工具失败，无法验证",
                 }))
 
-        async def _fail_exec(tool_call, trace_id=""):
+        async def _fail_exec(tool_call, trace_id="", phase=""):
             return {
                 "tool_name": "search_logs",
                 "args": {},
@@ -298,7 +298,7 @@ class TestWorker:
                 # judge 返回非法 JSON
                 return _make_chat_response("不是JSON")
 
-        async def _fake_exec(tool_call, trace_id=""):
+        async def _fake_exec(tool_call, trace_id="", phase=""):
             return {
                 "tool_name": tool_call.get("tool_name", ""),
                 "args": tool_call.get("args", {}),
@@ -450,7 +450,7 @@ class TestV2GraphIntegration:
         monkeypatch.setattr(nodes, "run_profile_updater", AsyncMock())
 
         # mock _exec_tool（Worker 兜底 search_sop 也走这里）
-        async def _fake_exec(tool_call, trace_id=""):
+        async def _fake_exec(tool_call, trace_id="", phase=""):
             return {
                 "tool_name": tool_call.get("tool_name", ""),
                 "args": tool_call.get("args", {}),

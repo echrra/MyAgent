@@ -102,6 +102,11 @@ class Tool:
     max_list_items: int = field(default_factory=lambda: settings.tool_max_list_items)
     # heavy=True 的工具走独立检索池（_HEAVY_EXECUTOR），避免饿死轻量工具
     heavy: bool = False
+    # --- P1 安全元数据（阶段化权限门用）---
+    # risk: 工具风险等级 "read"（只读查询） / "write"（有副作用，如创建工单）
+    # side_effect: True 表示调用会改变外部状态（不可逆），需要更严格管控
+    risk: str = "read"
+    side_effect: bool = False
 
     def __call__(self, **kwargs: Any) -> dict[str, Any]:
         started = time.perf_counter()

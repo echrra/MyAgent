@@ -123,4 +123,9 @@ warn_redundant_casts = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
-addopts = "-ra --strict-markers"
+# 默认排除 slow：这类测试要连 PG 且加载 bge 模型（分钟级），会把全量回归拖成不可用。
+# 需要时显式跑：uv run pytest -m slow
+addopts = "-ra --strict-markers -m 'not slow' --basetemp=.pytest_tmp"
+markers = [
+  "slow: 依赖 PG / 向量模型的集成测试，默认不跑（-m slow 显式启用）",
+]
