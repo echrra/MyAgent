@@ -7,6 +7,7 @@
 - W1 仅做关键词检索；向量 RAG 在 W2 接入
 """
 
+import difflib
 import glob
 import json
 import os
@@ -17,6 +18,7 @@ from typing import Any
 from loguru import logger
 
 from opsagent.core.config import settings
+from opsagent.core.retrieval.wiki_graph import get_wiki_graph
 from opsagent.core.tools.tls_client import (
     is_enabled as _tls_enabled,
     query_by_service_keyword as _tls_query_service,
@@ -348,7 +350,7 @@ def trace_query(
     数据说明（诚实标注）：本项目尚未合成独立 trace/span 数据，这里是**从合成日志按
     TraceId 聚合重建的「调用时间线」**——不是真实 APM 的 span 父子树，没有 span 间
     parent/child 关系，只有「同一 trace_id 的跨服务日志行按时间排序」。meta.derived_from
-    标注来源，便于上层区分数据来源。
+    标注来源，便于上层与面试讲述时区分。
 
     两种模式（至少给 trace_id / service 其一，入参校验在注册层强制）：
     - 给 trace_id（模式 A）：返回该链路的跨服务时间线 + 汇总（经过的服务 / 跨度 / 错误数 /
@@ -455,5 +457,172 @@ def trace_query(
             "minutes": minutes,
             "hit": len(traces),
             "returned": len(returned),
+        },
+    }
+
+
+# ====================== wiki_read ======================
+
+# 单次最多读几篇：批量读省 LLM 往返，但读太多会撑爆上下文
+_WIKI_READ_MAX_DOCS = 3
+# doc_id 拼错时最多给几个候选建议
+_WIKI_SUGGEST_LIMIT = 3
+# 近似匹配的相似度下限（difflib 口径）
+_WIKI_SUGGEST_CUTOFF = 0.5
+
+
+def _normalize_doc_id(raw: str) -> str:
+    """把 LLM 可能给的各种写法归一成 doc_id。
+
+    容错：去首尾空白与包裹符号、去路径前缀、去 .md 后缀。
+    LLM 常把检索结果里的 rel_path（sops/sop-f8-x.md）当 doc_id 传进来，这里统一吃掉。
+    """
+    s = raw.strip().strip("<>()[]\"'").replace("\\", "/")
+    if "/" in s:
+        s = s.rsplit("/", 1)[-1]
+    if s.lower().endswith(".md"):
+        s = s[:-3]
+    return s.strip()
+
+
+def _suggest_doc_ids(bad: str, known: list[str]) -> list[str]:
+    """doc_id 找不到时给相近候选：先双向子串匹配，再退到 difflib 近似匹配。
+
+    目的是让 Agent 拼错 ID 时能自我纠正，而不是白掉一轮工具调用。
+    """
+    low = bad.lower()
+    subs = sorted(d for d in known if low in d.lower() or d.lower() in low)
+    if subs:
+        return subs[:_WIKI_SUGGEST_LIMIT]
+    return difflib.get_close_matches(
+        bad, known, n=_WIKI_SUGGEST_LIMIT, cutoff=_WIKI_SUGGEST_CUTOFF
+    )
+
+
+def _split_h2(text: str) -> list[tuple[str, str]]:
+    """按 `## ` 把正文切成 [(section 标题, 段正文)]。
+
+    H1 与首个 `## ` 之间的前言以空标题归为第一项；无 `## ` 时整篇作为一段。
+    与 retrieval/chunker 的 section 口径保持一致，便于 Agent 用检索结果里的
+    section 名直接回来精读那一段。
+    """
+    lines = text.splitlines()
+    heads = [i for i, ln in enumerate(lines) if ln.lstrip().startswith("## ")]
+    if not heads:
+        return [("", text)]
+
+    out: list[tuple[str, str]] = []
+    if heads[0] > 0:
+        preamble = "\n".join(lines[: heads[0]]).strip()
+        if preamble:
+            out.append(("", preamble))
+    for k, h in enumerate(heads):
+        end = heads[k + 1] if k + 1 < len(heads) else len(lines)
+        out.append((lines[h].lstrip()[3:].strip(), "\n".join(lines[h:end]).strip()))
+    return out
+
+
+def wiki_read(doc_ids: str, section: str = "") -> dict[str, Any]:
+    """按文档 ID 精读知识库页面，并返回该页出链供下一跳遍历。
+
+    与 search_sop 的分工（这是本工具存在的理由）：
+    - search_sop 是「一次性语义打分取 topN」——口语 query 遇上技术正文时 reranker
+      打分可能整体崩塌，一次没命中就返空，该轮引用直接归零、无从恢复。
+    - wiki_read 是「按 ID 精读整页 + 拿出链」——检索没命中时，可以从语义邻近的文档
+      （如同故障域的复盘）顺着手写交叉引用跳到真正要找的 SOP，把一次性检索变成
+      可恢复的多轮遍历。链接是人工维护的，不受 query 措辞波动影响。
+
+    Args:
+        doc_ids: 文档 ID，多个用英文逗号分隔（最多 3 篇，超出截断）。可直接传检索结果里
+                 的 doc_id；传路径或带 .md 后缀也能识别。传 "README" 读全库目录索引。
+        section: 只读某个二级标题段（子串匹配、大小写不敏感）；留空读全文。
+                 用于只要「排查步骤」这类单段时省上下文。
+
+    Returns:
+        {"data": [{doc_id, title, category, rel_path, sections, content, links,
+                   section_matched?}...],
+         "meta": {requested, found, not_found, suggestions, section_filter,
+                  dangling_links, max_docs}}
+        知识库不可用或 ID 全不存在时 data 为空列表、not_found 带候选建议，不抛异常。
+    """
+    graph = get_wiki_graph()
+    base = Path(settings.docs_dir)
+    known = list(graph.docs)
+
+    # 去重保序后截断，避免 LLM 一次塞十几个 ID 把上下文打爆
+    requested = list(
+        dict.fromkeys(_normalize_doc_id(p) for p in doc_ids.split(",") if p.strip())
+    )
+    dropped = requested[_WIKI_READ_MAX_DOCS:]
+    requested = requested[:_WIKI_READ_MAX_DOCS]
+
+    section_key = section.strip().lower()
+    data: list[dict[str, Any]] = []
+    not_found: list[str] = []
+    suggestions: dict[str, list[str]] = {}
+    n_dangling = 0
+
+    for doc_id in requested:
+        meta = graph.docs.get(doc_id)
+        if meta is None:
+            not_found.append(doc_id)
+            cand = _suggest_doc_ids(doc_id, known)
+            if cand:
+                suggestions[doc_id] = cand
+            continue
+
+        try:
+            text = (base / meta.rel_path).read_text(encoding="utf-8")
+        except OSError as exc:
+            # 图是启动时扫的，文件可能已被移走；只记警告不冒泡
+            logger.warning(f"[wiki_read] 读取失败 {meta.rel_path}: {exc}")
+            not_found.append(doc_id)
+            continue
+
+        sections = _split_h2(text)
+        item: dict[str, Any] = {
+            "doc_id": doc_id,
+            "title": meta.title,
+            "category": meta.category,
+            "rel_path": meta.rel_path,
+            "sections": [t for t, _ in sections if t],
+        }
+
+        if section_key:
+            picked = [body for t, body in sections if section_key in t.lower()]
+            # 段名没匹配上时给空正文而非全文：sections 已列出可选段名，
+            # Agent 可据此改参数重试，不至于被灌一整篇。
+            item["content"] = "\n\n".join(picked)
+            item["section_matched"] = bool(picked)
+        else:
+            item["content"] = text
+
+        # 出链带目标文档标题 —— Agent 才能判断这一跳值不值得走；
+        # 断链保留并标记，明确告诉 Agent 此路不通，别浪费一轮。
+        links = []
+        for lk in graph.out_links.get(doc_id, ()):
+            target = graph.docs.get(lk.dst)
+            if lk.dangling:
+                n_dangling += 1
+            links.append({
+                "doc_id": lk.dst,
+                "title": target.title if target else "",
+                "anchor": lk.anchor,
+                "dangling": lk.dangling,
+            })
+        item["links"] = links
+        data.append(item)
+
+    return {
+        "data": data,
+        "meta": {
+            "requested": requested,
+            "dropped": dropped,
+            "found": len(data),
+            "not_found": not_found,
+            "suggestions": suggestions,
+            "section_filter": section.strip(),
+            "dangling_links": n_dangling,
+            "max_docs": _WIKI_READ_MAX_DOCS,
         },
     }

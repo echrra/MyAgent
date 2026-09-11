@@ -114,8 +114,15 @@ def _context_block(state: AgentState) -> dict[str, str]:
     }
 
 
-async def _exec_tool(tool_call: dict[str, Any], trace_id: str = "") -> ToolCallRecord:
-    """执行单次工具调用，返回 ToolCallRecord。coordinator/worker/tool_exec 共用。"""
+async def _exec_tool(
+    tool_call: dict[str, Any],
+    trace_id: str = "",
+    phase: str = "",
+) -> ToolCallRecord:
+    """执行单次工具调用，返回 ToolCallRecord。coordinator/worker/tool_exec 共用。
+
+    phase 参数标识调用方所在阶段，供权限门检查（空串 = 跳过检查，兼容旧调用）。
+    """
     tool_name = tool_call.get("tool_name", "")
     args = tool_call.get("args", {}) or {}
     started = time.perf_counter()
@@ -129,6 +136,28 @@ async def _exec_tool(tool_call: dict[str, Any], trace_id: str = "") -> ToolCallR
             "latency_ms": int((time.perf_counter() - started) * 1000),
             "error": f"unknown_tool: {tool_name}",
         }
+
+    # --- 阶段化权限门（P1）：phase 非空时检查，policy_enabled=False 从环境读 ---
+    if phase:
+        from opsagent.core.policy import check_tool_permission
+        tool_obj = TOOL_REGISTRY.get(tool_name)
+        # 用环境变量控制开关（不引入新 settings 字段，最小变更）
+        import os
+        policy_enabled = os.environ.get("POLICY_ENABLED", "1") != "0"
+        allowed, deny_reason = check_tool_permission(
+            phase, tool_name, tool_obj, enabled=policy_enabled,
+        )
+        if not allowed:
+            logger.warning(f"[policy] {deny_reason}")
+            return {
+                "tool_name": tool_name,
+                "args": args,
+                "result": None,
+                "success": False,
+                "latency_ms": int((time.perf_counter() - started) * 1000),
+                "error": f"policy_denied: {deny_reason}",
+            }
+
     try:
         result = await asyncio.to_thread(TOOL_REGISTRY[tool_name], **args)
         return {
@@ -255,7 +284,7 @@ async def tool_exec(state: AgentState) -> dict[str, Any]:
     trace_id = state.get("trace_id", "")
 
     with span_context(trace_id, "tool_exec", {"tool_name": call.get("tool_name", ""), "args": call.get("args", {})}):
-        record = await _exec_tool(call, trace_id)
+        record = await _exec_tool(call, trace_id, phase="tool_exec")
         update_span(
             trace_id, "tool_exec",
             output={"success": record["success"], "latency_ms": record["latency_ms"]},
@@ -544,7 +573,7 @@ async def worker(state: AgentState) -> dict[str, Any]:
                 else:
                     break  # 已有记录且 LLM 认为证据够了
 
-            record = await _exec_tool(tool_call, trace_id)
+            record = await _exec_tool(tool_call, trace_id, phase="worker")
             tool_records.append(record)
             logger.info(
                 f"[worker_{h_id}] step={step} tool={record['tool_name']} "
@@ -555,7 +584,7 @@ async def worker(state: AgentState) -> dict[str, Any]:
         called_tools = {r["tool_name"] for r in tool_records}
         if "search_sop" not in called_tools and "search_sop" in TOOL_REGISTRY:
             sop_call = {"tool_name": "search_sop", "args": {"query": h_desc, "top_k": 3}}
-            record = await _exec_tool(sop_call, trace_id)
+            record = await _exec_tool(sop_call, trace_id, phase="worker")
             tool_records.append(record)
             logger.info(f"[worker_{h_id}] 自动补充 search_sop success={record['success']}")
 

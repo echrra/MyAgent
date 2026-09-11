@@ -142,25 +142,29 @@ def span_context(
         return
 
     internal_id = _trace_registry.get(trace_id)
-    span = None
+    span_ctx = None
     try:
         from langfuse.types import TraceContext
 
         kwargs: dict[str, Any] = {"name": name, "input": input_data}
         if internal_id:
             kwargs["trace_context"] = TraceContext(trace_id=internal_id)
-        span = client.start_span(**kwargs)
+        # 用 as_current_span 让 OTel context 自动嵌套
+        # Send API 派生的 worker 在新 thread 里也能拿到父 span
+        span_ctx = client.start_as_current_span(**kwargs)
+        span_ctx.__enter__()
     except Exception as e:
         logger.warning(f"Langfuse span 创建失败: {e}")
+        span_ctx = None
 
     try:
         yield
     finally:
-        if span:
+        if span_ctx is not None:
             try:
-                span.end()
-            except Exception:
-                pass
+                span_ctx.__exit__(None, None, None)
+            except Exception as e:
+                logger.warning(f"Langfuse span 结束失败: {e}")
 
 
 def update_span(

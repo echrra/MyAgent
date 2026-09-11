@@ -36,9 +36,16 @@ class Reranker:
         logger.info(f"[reranker] 加载模型 {model_name} ...")
         self._torch = torch
         self._tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self._model = AutoModelForSequenceClassification.from_pretrained(model_name)
+
+        # 强制 fp32：低精度路径在部分卡上可能产生 NaN
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        dtype = torch.float32
+        self._model = AutoModelForSequenceClassification.from_pretrained(
+            model_name, dtype=dtype
+        ).to(device)
+        self._device = device
         self._model.eval()
-        logger.info("[reranker] 模型就绪")
+        logger.info(f"[reranker] 模型就绪 ({device}, {dtype})")
 
     def compute_score(self, pairs: list[tuple[str, str]]) -> list[float]:
         """对 [(query, passage), ...] 打分，返回与输入等长的分数列表（0-1）。"""
@@ -52,7 +59,7 @@ class Reranker:
                 truncation=True,
                 max_length=_MAX_LEN,
                 return_tensors="pt",
-            )
+            ).to(self._device)  # GPU 时把 batch 搬到显存上
             logits = self._model(**inputs, return_dict=True).logits.view(-1).float()
             scores = torch.sigmoid(logits)
         return [float(s) for s in scores.tolist()]

@@ -26,25 +26,31 @@ class Embedder:
 
     def __init__(self, model_name: str):
         # 延迟到这里 import，避免没装 torch 的环境 import 本模块即报错
+        import torch
         from FlagEmbedding import FlagModel
 
-        logger.info(f"[embedder] 加载模型 {model_name} ...")
-        # CPU 环境关 fp16（半精度在 CPU 上不稳且无收益）
+        # CUDA 可用时上 GPU；仅 CPU 环境保持默认 fp32 路径
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        logger.info(f"[embedder] 加载模型 {model_name} → {device}")
         self._model = FlagModel(
             model_name,
             query_instruction_for_retrieval=_QUERY_INSTRUCTION,
-            use_fp16=False,
+            use_fp16=(device == "cuda"),
+            devices=device,  # FlagEmbedding 的参数名是复数 devices
         )
-        logger.info("[embedder] 模型就绪")
+        logger.info(f"[embedder] 模型就绪 ({device})")
 
     def embed_docs(self, texts: list[str]) -> np.ndarray:
         """批量编码文档，返回 (n, dim) 归一化向量。"""
-        return np.asarray(self._model.encode(texts), dtype=np.float32)
+        vecs = np.asarray(self._model.encode(texts), dtype=np.float32)
+        # NaN 防护：极端输入下置 0（PG vector 类型拒绝 NaN）
+        return np.nan_to_num(vecs, nan=0.0, posinf=1.0, neginf=-1.0)
 
     def embed_query(self, query: str) -> np.ndarray:
         """编码单条查询（自动加检索指令），返回 (dim,) 向量。"""
-        vecs = self._model.encode_queries([query])
-        return np.asarray(vecs, dtype=np.float32)[0]
+        vecs = np.asarray(self._model.encode_queries([query]), dtype=np.float32)
+        vecs = np.nan_to_num(vecs, nan=0.0, posinf=1.0, neginf=-1.0)
+        return vecs[0]
 
 
 # --- 手工 double-checked locking（防多 worker 冷启动并发重复加载）---

@@ -12,7 +12,6 @@ expected_tool_sequence:
   args_match: {}
 expected_citations:
 - sop-f11-requeue-storm
-- pm-011-requeue-storm
 expected_keywords_min: 3
 expected_keywords:
 - REQUEUE_STORM

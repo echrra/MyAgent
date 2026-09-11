@@ -8,9 +8,10 @@ OpsAgent 是一个面向微服务架构的智能运维诊断工具，通过 Mult
 
 **核心能力**：
 - 假设驱动并行诊断：Coordinator 生成多故障假设，Worker 并行验证，Synthesizer 综合证据
-- 混合检索 RAG：pgvector 向量检索 + BM25 全文检索 + RRF 融合 + Rerank 精排
+- 混合检索 RAG：pgvector 向量检索 + BM25 全文检索 + RRF 融合 + Rerank 精排；再叠加一层 **Wiki 图谱**（`core/retrieval/wiki_graph.py`）把 KB 文档间手写的交叉引用还原成有向图，给 worker 提供 `wiki_read` 工具顺着链接做下一跳扩展——RAG 增强，不是替代检索
 - 四层记忆系统：会话记忆 / 用户画像 / 故障模式库 / 压缩归档，支持长对话
 - 双轨工具调用：Function Calling + MCP 协议，可扩展接入任意运维工具链
+- **Policy Gate**：阶段化工具权限门（`core/policy.py`）—— 按所属节点白名单拦截越权工具调用，附独立 gate 测试 harness
 - 可观测评测闭环：Langfuse 全链路追踪 + 自建评测体系驱动迭代
 
 ## 架构
@@ -73,7 +74,8 @@ opsagent/
 │   ├── graph/          # LangGraph 状态图（nodes / builder / state）
 │   ├── llm/            # LLM 客户端（多模型路由 + 超时重试）
 │   ├── memory/         # 四层记忆系统
-│   ├── retrieval/      # RAG 检索链（embedding / rerank / query_rewrite）
+│   ├── retrieval/      # RAG 检索链 + wiki_graph（Wiki 图谱，RAG 增强）
+│   ├── policy.py       # 阶段化工具权限门
 │   ├── tools/          # 工具注册与执行（FC + MCP）
 │   └── prompts/        # Prompt 模板
 ├── app/                # FastAPI 服务（SSE 流式）
@@ -81,10 +83,17 @@ opsagent/
 eval/
 ├── dataset/cases/      # 评测用例（YAML，10 故障类型 × 难度分级）
 ├── metrics/            # 评分器（工具覆盖 + 引用命中 + 结论关键词）
+├── ab.py               # A/B 评测（双模型/双配置对比）
+├── fingerprint.py      # 评测指纹（配置/数据 hash，保证可复现）
+├── thresholds.py       # 阈值校验（CI 红线）
+├── trace.py            # 评测 trace 落盘
 ├── runner.py           # 评测执行器（并发 + 重试 + 报告生成）
 └── reports/            # 评测报告存档（运行产物）
+gate_harness_test/      # Policy Gate 独立测试 harness
+├── scenarios/          # D 直接调用 / R 角色冒充 / P SOP 投毒 / S 综合注入 / T 工具返回注入
+└── runners/            # L1 矩阵 / L2 LLM 诱导 / L3 强制调用
 docs/                   # 设计文档
-tests/                  # 单测
+tests/                  # 单测（含 test_wiki_graph / test_wiki_read）
 ```
 
 ## 评测体系

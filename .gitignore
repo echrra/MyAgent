@@ -20,6 +20,8 @@ env/
 .uv/
 .ruff_cache/
 .pytest_cache/
+.pytest_tmp/
+model_cache/
 .mypy_cache/
 htmlcov/
 .coverage
@@ -47,7 +49,13 @@ data/metrics/*.parquet
 
 # 评测产物
 eval/reports/*.md
+eval/reports/fingerprint_*.json
+eval/traces/
 !eval/reports/.gitkeep
+
+# gate harness 测试产物(代码进库,运行产物不进)
+gate_harness_test/reports/
+gate_harness_test/audit/runs/
 
 # 模型 / 索引缓存
 models/

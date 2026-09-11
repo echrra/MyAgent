@@ -30,8 +30,9 @@ _initialized: bool = False
 # 客户端缓存：避免每次调用都新建 httpx 客户端和 SSL 上下文
 _async_clients: dict[str, AsyncOpenAI] = {}
 _sync_clients: dict[str, OpenAI] = {}
-# 请求超时：connect 快速失败，read 允许 LLM 生成耗时
-_HTTP_TIMEOUT = httpx.Timeout(connect=10.0, read=50.0, write=10.0, pool=10.0)
+# 请求超时：connect 快速失败，read 给 reasoning model 留足 240s
+# （gpt-5.5 单次 ~20s，长 plan/answer 可达 60s+；qwen 也偶尔会跑 30s+）
+_HTTP_TIMEOUT = httpx.Timeout(connect=10.0, read=240.0, write=10.0, pool=10.0)
 
 
 def _init() -> None:
@@ -77,6 +78,7 @@ def _init() -> None:
             "api_key": api_key,
             "api_base": api_base,
             "temperature": params.get("temperature"),
+            "max_completion_tokens": params.get("max_completion_tokens"),
         }
 
     # 解析 fallbacks
@@ -97,8 +99,12 @@ def _resolve_env(value: str) -> str:
     return value
 
 
-def _get_client(alias: str) -> tuple[AsyncOpenAI, str, float | None]:
-    """获取指定别名的异步客户端 + 模型名 + 默认温度。复用已有客户端，避免反复新建 httpx/SSL。"""
+def _get_client(alias: str) -> tuple[AsyncOpenAI, str, float | None, int | None]:
+    """获取指定别名的异步客户端。复用已有客户端，避免反复新建 httpx/SSL。
+
+    Returns:
+        (client, model_name, default_temperature, default_max_completion_tokens)
+    """
     _init()
     cfg = _MODEL_MAP.get(alias)
     if not cfg:
@@ -113,11 +119,16 @@ def _get_client(alias: str) -> tuple[AsyncOpenAI, str, float | None]:
             timeout=_HTTP_TIMEOUT, max_retries=0,
         )
 
-    return _async_clients[alias], cfg["model"], cfg.get("temperature")
+    return (
+        _async_clients[alias],
+        cfg["model"],
+        cfg.get("temperature"),
+        cfg.get("max_completion_tokens"),
+    )
 
 
-def _get_sync_client(alias: str) -> tuple[OpenAI, str, float | None]:
-    """获取指定别名的同步客户端 + 模型名 + 默认温度。复用已有客户端，避免反复新建 httpx/SSL。"""
+def _get_sync_client(alias: str) -> tuple[OpenAI, str, float | None, int | None]:
+    """获取指定别名的同步客户端。复用已有客户端，避免反复新建 httpx/SSL。"""
     _init()
     cfg = _MODEL_MAP.get(alias)
     if not cfg:
@@ -132,7 +143,12 @@ def _get_sync_client(alias: str) -> tuple[OpenAI, str, float | None]:
             timeout=_HTTP_TIMEOUT, max_retries=0,
         )
 
-    return _sync_clients[alias], cfg["model"], cfg.get("temperature")
+    return (
+        _sync_clients[alias],
+        cfg["model"],
+        cfg.get("temperature"),
+        cfg.get("max_completion_tokens"),
+    )
 
 
 # ====================== 公开 API（保持与旧版签名一致）======================
@@ -157,7 +173,7 @@ class _SyncRouter:
         **kwargs: Any,
     ) -> Any:
         """同步非流式调用。"""
-        client, real_model, default_temp = _get_sync_client(model)
+        client, real_model, default_temp, default_maxct = _get_sync_client(model)
         params: dict[str, Any] = {"model": real_model, "messages": messages}
         # temperature：调用方传入 > yaml 默认 > 不传
         temp = kwargs.pop("temperature", None)
@@ -165,8 +181,12 @@ class _SyncRouter:
             params["temperature"] = temp
         elif default_temp is not None:
             params["temperature"] = default_temp
-        if "max_tokens" in kwargs:
-            params["max_tokens"] = kwargs.pop("max_tokens")
+        # max_completion_tokens：调用方 > yaml 默认
+        # （GPT-5+/o1 系列 reasoning model 用新参数名，旧的 max_tokens 会被拒绝）
+        if "max_completion_tokens" in kwargs:
+            params["max_completion_tokens"] = kwargs.pop("max_completion_tokens")
+        elif default_maxct is not None:
+            params["max_completion_tokens"] = default_maxct
         params.update(kwargs)
 
         return client.chat.completions.create(**params)
@@ -218,15 +238,19 @@ async def _do_chat(
     **kwargs: Any,
 ) -> dict[str, Any]:
     """实际调用（无 fallback 逻辑）。"""
-    client, model, default_temp = _get_client(alias)
+    client, model, default_temp, default_maxct = _get_client(alias)
 
     params: dict[str, Any] = {"model": model, "messages": messages}
     # temperature 优先级：调用方 > yaml 默认
     temp = temperature if temperature is not None else default_temp
     if temp is not None:
         params["temperature"] = temp
+    # max_completion_tokens：调用方显式传 > yaml 默认
+    # （GPT-5+/o1 系列 reasoning model 用新参数名；模型方若收到旧 max_tokens 会 400）
     if max_tokens is not None:
-        params["max_tokens"] = max_tokens
+        params["max_completion_tokens"] = max_tokens
+    elif default_maxct is not None:
+        params["max_completion_tokens"] = default_maxct
     if tools is not None:
         params["tools"] = tools
     params.update(kwargs)
@@ -247,12 +271,15 @@ async def chat_stream(
     Yields:
         每次产出一段增量 token（已抽取 delta.content，调用方直接拼）
     """
-    client, model, default_temp = _get_client(alias)
+    client, model, default_temp, default_maxct = _get_client(alias)
 
     params: dict[str, Any] = {"model": model, "messages": messages, "stream": True}
     temp = temperature if temperature is not None else default_temp
     if temp is not None:
         params["temperature"] = temp
+    # 流式调用也支持 max_completion_tokens（reasoning model 必需）
+    if "max_completion_tokens" not in kwargs and default_maxct is not None:
+        params["max_completion_tokens"] = default_maxct
     params.update(kwargs)
 
     stream = await client.chat.completions.create(**params)
